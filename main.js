@@ -4189,6 +4189,7 @@
     const isHarpo = contestant.id === "harpo";
     const isRippeli = contestant.id === "rippeli";
     const isAndil = contestant.id === "andil";
+    const isTantor = contestant.id === "tantor";
     const characterShirtColor =
       shirtColor === SHIRT_COLORS.LEADER || shirtColor === SHIRT_COLORS.CHAMPION
         ? shirtColor
@@ -4196,8 +4197,10 @@
           ? "#9a6b46"
           : isPorge || isLirkki || isHarpo
             ? "#c52828"
-            : shirtColor;
-    const characterShortsColor = isRippeli ? "#4a4a4a" : shortsColor;
+            : isTantor
+              ? "#b57dff"
+              : shirtColor;
+    const characterShortsColor = isAndil ? "#1a1a1a" : isRippeli ? "#4a4a4a" : shortsColor;
 
     const px = (dx, dy, w, h, color) => {
       ctx.fillStyle = color;
@@ -4220,7 +4223,7 @@
     }
 
     if (isLirkki) {
-      // Lirkki on hoikka ja muita lyhyempi.
+      // Lirkki: lyhyt, kapea.
       px(2, 3, 4, 2, p.hair);
       px(2, 5, 4, 3, p.skin);
       px(3, 6, 1, 1, p.eyes);
@@ -4235,10 +4238,57 @@
     }
 
     if (isAndil) {
+      // Andil: pitkä, paksu. Suikka-hattu.
       px(2, 2, 4, 2, p.hair);
-    } else {
+      px(0, 4, 10, 4, p.skin);
+      px(3, 5, 1, 1, p.eyes);
+      px(6, 5, 1, 1, p.eyes);
+      px(0, 8, 10, 6, characterShirtColor);
+      px(0, 14, 10, 4, characterShortsColor);
+      px(-1, 9, 1, 5, p.skin);
+      px(10, 9, 1, 5, p.skin);
+      px(2, 18, 2, 4, p.skin);
+      px(7, 18, 2, 4, p.skin);
+      return;
+    }
+
+    if (isTantor) {
+      // Tantor: pitkä, paksu.
+      px(0, 2, 10, 2, p.hair);
+      px(0, 4, 10, 4, p.skin);
+      px(3, 5, 1, 1, p.eyes);
+      px(6, 5, 1, 1, p.eyes);
+      px(0, 8, 10, 6, characterShirtColor);
+      px(0, 14, 10, 4, characterShortsColor);
+      px(-1, 9, 1, 5, p.skin);
+      px(10, 9, 1, 5, p.skin);
+      px(2, 18, 2, 4, p.skin);
+      px(7, 18, 2, 4, p.skin);
+      return;
+    }
+
+    if (isPokki) {
+      // Pokki: lyhyt, keskikoko, kalju.
+      px(1, 2, 6, 6, p.skin);
+      px(2, 5, 1, 1, p.eyes);
+      px(5, 5, 1, 1, p.eyes);
+      px(0, 8, 8, 4, characterShirtColor);
+      px(0, 12, 8, 2, characterShortsColor);
+      px(-1, 9, 1, 3, p.skin);
+      px(8, 9, 1, 3, p.skin);
+      px(1, 14, 2, 3, p.skin);
+      px(5, 14, 2, 3, p.skin);
+      px(0, 8, 2, 4, "#b57dff");
+      px(6, 8, 2, 4, "#b57dff");
+      px(2, 8, 4, 2, "#b57dff");
+      return;
+    }
+
+    if (isRippeli) {
       px(0, 2, 8, 2, p.hair);
     }
+    // Keskikoko: Pressa, Rippeli, Harpo.
+    px(0, 2, 8, 2, p.hair);
     if (isRippeli) {
       px(0, 3, 8, 1, "#1a1a1a");
     }
@@ -4251,13 +4301,6 @@
     px(8, 9, 1, 3, p.skin);
     px(1, 16, 2, 3, p.skin);
     px(5, 16, 2, 3, p.skin);
-
-    if (isPokki) {
-      // Pokille lila bolero paidan paalle.
-      px(0, 8, 2, 4, "#b57dff");
-      px(6, 8, 2, 4, "#b57dff");
-      px(2, 8, 4, 2, "#b57dff");
-    }
 
     if (isPressa) {
       // Pressalle oranssit viikset + lyhyt parta.
@@ -4275,6 +4318,17 @@
       px(5, 7, 1, 1, "#1b1b1b");
       px(3, 8, 2, 1, "#0f0f0f");
       px(3, 9, 2, 1, "#0f0f0f");
+    }
+
+    if (isRippeli) {
+      // Rippelille vaaleanruskeat viikset + parta.
+      const beardColor = "#b8956a";
+      const beardDark = "#9a7a52";
+      px(2, 7, 1, 1, beardColor);
+      px(3, 7, 2, 1, beardColor);
+      px(5, 7, 1, 1, beardColor);
+      px(3, 8, 2, 1, beardDark);
+      px(3, 9, 2, 1, beardDark);
     }
   }
 
