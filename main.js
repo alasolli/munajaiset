@@ -3,6 +3,7 @@
 
   const SCREEN = Object.freeze({
     TITLE: "TITLE",
+    TEST_INTRO: "TEST_INTRO",
     TEST_MENU: "TEST_MENU",
     SELECT: "SELECT",
     PLAYER_SETUP: "PLAYER_SETUP",
@@ -11,10 +12,11 @@
     GAME_KIVENHEITTO: "GAME_KIVENHEITTO",
     GAME_KEVYTHEITTO: "GAME_KEVYTHEITTO",
     GAME_POLKYNTYONTO: "GAME_POLKYNTYONTO",
+    GAME_PASKANTYONTO: "GAME_PASKANTYONTO",
     RESULTS: "RESULTS",
   });
 
-  const EVENTS = ["Soutu", "Kivenheitto", "Polkyntyonto", "Kevyen esineen heitto"];
+  const EVENTS = ["Soutu", "Kivenheitto", "Polkyntyonto", "Kevyen esineen heitto", "Paskan työntö"];
 
   const CONTESTANTS = [
     {
@@ -189,10 +191,29 @@
       shoutTimer: 0,
       shoutText: "",
     },
+    paskantyonto: {
+      runOrder: [],
+      currentRunIndex: 0,
+      currentContestantId: null,
+      currentDistance: 0,
+      targetDistance: 5,
+      speed: 0,
+      elapsed: 0,
+      finishedRuns: [],
+      phase: "idle",
+      phaseTimer: 0,
+      tapFlash: 0,
+      sunglassesCheererId: null,
+      shoutTimer: 0,
+      shoutText: "",
+      tapAccumulator: 0,
+      step: 0,
+    },
     ui: {
       buttons: [],
       message: "",
     },
+    testIntroUntil: 0,
   };
 
   const renderer = {
@@ -281,6 +302,9 @@
   function setScreen(nextScreen) {
     if (gameState.screen === SCREEN.SELECT && nextScreen !== SCREEN.SELECT) {
       stopSelectMusic();
+    }
+    if (nextScreen === SCREEN.TEST_INTRO) {
+      gameState.testIntroUntil = Date.now() + 3000;
     }
     gameState.screen = nextScreen;
     gameState.ui.message = "";
@@ -574,6 +598,9 @@
       case SCREEN.TITLE:
         drawTitle();
         break;
+      case SCREEN.TEST_INTRO:
+        drawTestIntro();
+        break;
       case SCREEN.TEST_MENU:
         drawTestMenu();
         break;
@@ -597,6 +624,9 @@
         break;
       case SCREEN.GAME_POLKYNTYONTO:
         drawPolkyntyonto();
+        break;
+      case SCREEN.GAME_PASKANTYONTO:
+        drawPaskantyonto();
         break;
       case SCREEN.RESULTS:
         drawResults();
@@ -727,11 +757,26 @@
       setScreen(SCREEN.SELECT);
     });
 
-    const testBtn = { x: 340, y: 388, w: 280, h: 64, label: "TESTAA LAJIA" };
+    const testBtn = { x: 340, y: 388, w: 280, h: 64, label: "HARJOITTLE" };
     addButton(testBtn.x, testBtn.y, testBtn.w, testBtn.h, testBtn.label, () => {
-      setScreen(SCREEN.TEST_MENU);
+      setScreen(SCREEN.TEST_INTRO);
     });
 
+    drawButtons();
+  }
+
+  function drawTestIntro() {
+    ctx.fillStyle = "#c03030";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 180px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("-1", canvas.width / 2, canvas.height / 2);
+    ctx.textAlign = "left";
+    addButton(0, 0, canvas.width, canvas.height, "", () => {
+      setScreen(SCREEN.TEST_MENU);
+    }, false);
     drawButtons();
   }
 
@@ -754,7 +799,7 @@
     ctx.fillStyle = "#a3d5ff";
     ctx.fillText("Avaa valittu laji suoraan testiin (1 ihmispelaaja).", 190, 155);
 
-    const events = ["Soutu", "Kivenheitto", "Polkyntyonto", "Kevyen esineen heitto"];
+    const events = ["Soutu", "Kivenheitto", "Polkyntyonto", "Kevyen esineen heitto", "Paskan työntö"];
     events.forEach((eventName, idx) => {
       const y = 186 + idx * 56;
       addButton(210, y, 360, 48, eventName.toUpperCase(), () => {
@@ -934,6 +979,8 @@
             ? "ALOITA POLKYNTYONTO"
             : nextEvent === "Kevyen esineen heitto"
               ? "ALOITA KEVYTHEITTO"
+            : nextEvent === "Paskan työntö"
+              ? "ALOITA PASKAN TYONTO"
         : nextEvent
           ? `${nextEvent} (TULOSSA)`
           : "MUNAJAISET OHI";
@@ -953,6 +1000,10 @@
       }
       if (nextEvent === "Kevyen esineen heitto") {
         startKevytheittoEvent();
+        return;
+      }
+      if (nextEvent === "Paskan työntö") {
+        startPaskantyontoEvent();
         return;
       }
       gameState.ui.message = nextEvent
@@ -1022,6 +1073,10 @@
     }
     if (eventName === "Kevyen esineen heitto") {
       startKevytheittoEvent();
+      return;
+    }
+    if (eventName === "Paskan työntö") {
+      startPaskantyontoEvent();
       return;
     }
     setScreen(SCREEN.TEST_MENU);
@@ -1104,6 +1159,31 @@
     }
     setupCurrentKevytRun();
     setScreen(SCREEN.GAME_KEVYTHEITTO);
+  }
+
+  function startPaskantyontoEvent() {
+    const p = gameState.paskantyonto;
+    p.runOrder = getHumanContestants().map((c) => c.id);
+    p.currentRunIndex = 0;
+    p.finishedRuns = getAiContestants().map((ai) => simulatePaskantyontoAiRun(ai));
+    if (p.runOrder.length === 0) {
+      finalizePaskantyontoResults();
+      return;
+    }
+    setupCurrentPaskantyontoRun();
+    setScreen(SCREEN.GAME_PASKANTYONTO);
+  }
+
+  function simulatePaskantyontoAiRun(contestant) {
+    const { speed, strength, stamina } = contestant.stats;
+    const base = 20 - (speed * 0.5 + strength * 0.5 + stamina * 0.4);
+    const jitter = (Math.random() - 0.5) * 2;
+    const time = Math.max(8, Math.min(20, base + jitter));
+    return {
+      id: contestant.id,
+      name: contestant.name,
+      time,
+    };
   }
 
   function simulatePolkyAiRun(contestant) {
@@ -1226,6 +1306,28 @@
     p.sunglassesCheererId = pickSunglassesCheerer(contestant.id);
     p.shoutTimer = 0;
     p.shoutText = "";
+  }
+
+  function setupCurrentPaskantyontoRun() {
+    const p = gameState.paskantyonto;
+    const contestantId = p.runOrder[p.currentRunIndex];
+    const contestant = gameState.tournament.contestants.find((c) => c.id === contestantId);
+    if (!contestant) {
+      return;
+    }
+    p.currentContestantId = contestant.id;
+    p.currentDistance = 0;
+    p.targetDistance = 5;
+    p.speed = 0;
+    p.elapsed = 0;
+    p.phase = "starterCall";
+    p.phaseTimer = 0;
+    p.tapFlash = 0;
+    p.sunglassesCheererId = pickSunglassesCheerer(contestant.id);
+    p.shoutTimer = 0;
+    p.shoutText = "";
+    p.tapAccumulator = 0;
+    p.step = 0;
   }
 
   function buildKivenTurnQueue(humanIds, attemptsPerPlayer) {
@@ -1483,10 +1585,32 @@
     playBeep(560 + current.stats.strength * 8, 0.03, 0.025);
   }
 
+  function onPaskantyontoTap() {
+    const p = gameState.paskantyonto;
+    if (gameState.screen !== SCREEN.GAME_PASKANTYONTO) {
+      return;
+    }
+    const current = gameState.tournament.contestants.find((c) => c.id === p.currentContestantId);
+    if (!current || current.controller !== "human") {
+      return;
+    }
+    if (p.phase === "starterCall") {
+      p.phase = "running";
+    }
+    if (p.phase !== "running") {
+      return;
+    }
+    const push = 9 + current.stats.strength * 1.5 + current.stats.speed * 0.9;
+    p.speed += push;
+    p.tapAccumulator += 1;
+    p.tapFlash = 0.14;
+    playBeep(480 + current.stats.strength * 12, 0.035, 0.028);
+  }
+
   function applyKivenTapImpulse(contestant, multiplier) {
     const k = gameState.kivenheitto;
-    const baseImpulse = 15 + contestant.stats.strength * 1.8 + contestant.stats.speed * 0.9;
-    const powerGain = 1.9 + contestant.stats.strength * 0.42 + contestant.stats.stamina * 0.18;
+    const baseImpulse = 20 + contestant.stats.strength * 2.0 + contestant.stats.speed * 1.1;
+    const powerGain = 2.2 + contestant.stats.strength * 0.48 + contestant.stats.stamina * 0.2;
     k.speed += baseImpulse * multiplier;
     k.power += powerGain * multiplier;
     k.timeSinceTap = 0;
@@ -1587,6 +1711,10 @@
   }
 
   function update(deltaSeconds) {
+    if (gameState.screen === SCREEN.TEST_INTRO && Date.now() >= gameState.testIntroUntil) {
+      setScreen(SCREEN.TEST_MENU);
+      return;
+    }
     if (gameState.screen === SCREEN.GAME_SOUTU) {
       updateSoutu(deltaSeconds);
       return;
@@ -1601,6 +1729,10 @@
     }
     if (gameState.screen === SCREEN.GAME_POLKYNTYONTO) {
       updatePolkyntyonto(deltaSeconds);
+      return;
+    }
+    if (gameState.screen === SCREEN.GAME_PASKANTYONTO) {
+      updatePaskantyonto(deltaSeconds);
     }
   }
 
@@ -1741,9 +1873,9 @@
       }
 
       k.timeSinceTap += deltaSeconds;
-      k.speed = Math.max(0, k.speed - (165 + (10 - current.stats.stamina) * 8) * deltaSeconds);
+      k.speed = Math.max(0, k.speed - (150 + (10 - current.stats.stamina) * 7) * deltaSeconds);
       k.power = Math.max(0, k.power - 11 * deltaSeconds);
-      k.positionX += k.speed * deltaSeconds * 0.33;
+      k.positionX += k.speed * deltaSeconds * 0.42;
 
       if (k.positionX >= k.throwLineX) {
         k.positionX = k.throwLineX;
@@ -2088,6 +2220,87 @@
     setScreen(SCREEN.RESULTS);
   }
 
+  function updatePaskantyonto(deltaSeconds) {
+    const p = gameState.paskantyonto;
+    const current = gameState.tournament.contestants.find((c) => c.id === p.currentContestantId);
+    if (!current) {
+      return;
+    }
+    if (p.tapFlash > 0) {
+      p.tapFlash -= deltaSeconds;
+    }
+    if (p.shoutTimer > 0) {
+      p.shoutTimer -= deltaSeconds;
+    }
+    if (p.phase === "starterCall") {
+      return;
+    }
+    if (p.phase === "running") {
+      const tapsPerStep = 40;
+      if (p.tapAccumulator >= tapsPerStep) {
+        p.step += 1;
+        p.tapAccumulator = 0;
+      }
+      const maxSpeedFromStep = 18 + 28 * Math.log2(1 + p.step);
+      p.speed = Math.min(p.speed, maxSpeedFromStep);
+      const drag = 78;
+      p.speed = Math.max(0, p.speed - drag * deltaSeconds);
+      p.currentDistance += p.speed * 0.018 * deltaSeconds;
+      p.elapsed += deltaSeconds;
+      if (current.controller === "ai") {
+        p.step = Math.min(12, Math.floor(p.elapsed / 5));
+        p.speed = Math.min(p.speed, 18 + 28 * Math.log2(1 + p.step));
+        const aiPush = 8 + current.stats.strength * 1.5 + current.stats.speed * 0.9;
+        p.speed += aiPush * Math.min(1, deltaSeconds * 8);
+      }
+      if (p.currentDistance >= p.targetDistance) {
+        p.currentDistance = p.targetDistance;
+        p.finishedRuns.push({ id: current.id, name: current.name, time: p.elapsed });
+        p.shoutText = `AIKA! ${p.elapsed.toFixed(2)} s`;
+        p.shoutTimer = 3.0;
+        p.phase = "betweenRuns";
+        p.phaseTimer = 1.0;
+        playBeep(920, 0.08, 0.05);
+      }
+      return;
+    }
+    if (p.phase === "betweenRuns") {
+      p.phaseTimer -= deltaSeconds;
+      if (p.phaseTimer > 0) {
+        return;
+      }
+      p.currentRunIndex += 1;
+      if (p.currentRunIndex >= p.runOrder.length) {
+        finalizePaskantyontoResults();
+      } else {
+        setupCurrentPaskantyontoRun();
+      }
+    }
+  }
+
+  function finalizePaskantyontoResults() {
+    const ranked = [...gameState.paskantyonto.finishedRuns].sort((a, b) => a.time - b.time);
+    const pointsByRank = [3, 2, 1];
+    ranked.forEach((entry, idx) => {
+      const points = pointsByRank[idx] ?? 0;
+      const contestant = gameState.tournament.contestants.find((c) => c.id === entry.id);
+      if (contestant) {
+        contestant.points += points;
+      }
+      entry.rank = idx + 1;
+      entry.pointsAwarded = points;
+      entry.totalPoints = contestant ? contestant.points : points;
+    });
+    gameState.tournament.lastEventWinnerId = ranked[0]?.id ?? null;
+    gameState.tournament.lastResults = {
+      eventName: "Paskan työntö",
+      metricLabel: "Aika",
+      rows: ranked,
+    };
+    simulation.updateLeader();
+    setScreen(SCREEN.RESULTS);
+  }
+
   function drawSoutu() {
     drawPanel(60, 40, 840, 460);
     const soutu = gameState.soutu;
@@ -2284,6 +2497,157 @@
       ctx.font = "bold 44px monospace";
       ctx.fillText("POLKKY PUTOI!", 260, 260);
     }
+  }
+
+  function drawPaskantyonto() {
+    drawPanel(60, 40, 840, 460);
+    const p = gameState.paskantyonto;
+    const current = gameState.tournament.contestants.find((c) => c.id === p.currentContestantId);
+    if (!current) {
+      return;
+    }
+    ctx.fillStyle = "#d7f1ff";
+    ctx.font = "bold 34px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("PASKAN TYONTO", 100, 92);
+    ctx.font = "20px monospace";
+    ctx.fillStyle = "#a3d5ff";
+    ctx.fillText(`Vuoro ${p.currentRunIndex + 1}/${p.runOrder.length}: ${current.name}`, 100, 128);
+
+    drawPaskantyontoScene(current);
+
+    const progress = Math.min(1, p.currentDistance / p.targetDistance);
+    ctx.fillStyle = "#d7f1ff";
+    ctx.font = "18px monospace";
+    ctx.fillText(`Matka: ${(progress * 5).toFixed(1)} / 5 m`, 100, 415);
+    ctx.fillText(`Aika: ${p.elapsed.toFixed(2)} s`, 300, 415);
+    ctx.fillText(`Nopeus: ${Math.round(p.speed)}`, 500, 415);
+    ctx.fillStyle = "#a3d5ff";
+    ctx.fillText(`Pykala: ${p.step} (seuraava: ${p.tapAccumulator}/40 napautusta)`, 100, 438);
+
+    if (p.phase === "starterCall") {
+      ctx.fillStyle = "#ffd27d";
+      ctx.fillText("Odotetaan ensimmaista rampytysta...", 100, 445);
+    } else if (current.controller === "human") {
+      ctx.fillStyle = "#7dffb3";
+      ctx.fillText("NAPUTA HULLUNA! AUTO LAAKASTUU JOS ET RAMPYTA.", 100, 445);
+    } else {
+      ctx.fillStyle = "#ffc77d";
+      ctx.fillText("Tekoaly tyontaa...", 100, 445);
+    }
+  }
+
+  function drawPaskantyontoScene(contestant) {
+    const p = gameState.paskantyonto;
+    const laneY = 300;
+    const laneH = 70;
+    const startX = 100;
+    const laneW = 700;
+    const scale = laneW / p.targetDistance;
+    const carX = startX + p.currentDistance * scale;
+
+    ctx.fillStyle = "#3d4a2f";
+    ctx.fillRect(85, laneY - 10, laneW + 40, laneH + 30);
+    ctx.strokeStyle = "#5a6b42";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(85, laneY - 10, laneW + 40, laneH + 30);
+
+    ctx.fillStyle = "#ffcf66";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(startX + laneW, laneY - 4);
+    ctx.lineTo(startX + laneW, laneY + laneH + 4);
+    ctx.stroke();
+    ctx.fillStyle = "#d7f1ff";
+    ctx.font = "14px monospace";
+    ctx.fillText("5 m", startX + laneW - 18, laneY + laneH + 22);
+
+    const paskaAnchor = drawCheeringCrowd(
+      [
+        { x: 88, y: 268 },
+        { x: 88, y: 305 },
+        { x: 88, y: 342 },
+        { x: 808, y: 268 },
+        { x: 808, y: 305 },
+        { x: 808, y: 342 },
+      ],
+      contestant.id,
+      p.sunglassesCheererId,
+      2
+    );
+    if (p.phase === "starterCall" && paskaAnchor) {
+      drawSpeechBubbleFromAnchor(paskaAnchor, "AJANOTTAJA VALMIS!");
+    } else if (p.shoutTimer > 0 && paskaAnchor) {
+      drawSpeechBubbleFromAnchor(paskaAnchor, p.shoutText);
+    }
+
+    const carW = 76;
+    const carH = 34;
+    const cy = laneY + laneH / 2 - carH / 2;
+    ctx.save();
+    ctx.translate(carX, cy);
+    const blue = "#2a3a6a";
+    const blueDark = "#1a2a4a";
+    const blueEdge = "#4a5a8a";
+    const wheelColor = "#2d3325";
+    const hoodTop = 14;
+    const cabinTop = 8;
+    ctx.fillStyle = blue;
+    ctx.beginPath();
+    ctx.moveTo(4, carH - 4);
+    ctx.lineTo(8, carH - 10);
+    ctx.quadraticCurveTo(12, 2, 22, 4);
+    ctx.lineTo(48, 4);
+    ctx.quadraticCurveTo(54, 2, 58, 8);
+    ctx.quadraticCurveTo(62, 12, 62, 18);
+    ctx.quadraticCurveTo(64, 24, 68, 26);
+    ctx.lineTo(72, 26);
+    ctx.quadraticCurveTo(76, 24, 76, carH - 8);
+    ctx.quadraticCurveTo(74, carH - 2, 68, carH - 2);
+    ctx.lineTo(12, carH - 2);
+    ctx.quadraticCurveTo(6, carH - 2, 4, carH - 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = blueEdge;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = blueDark;
+    ctx.beginPath();
+    ctx.moveTo(24, 8);
+    ctx.lineTo(42, 8);
+    ctx.quadraticCurveTo(46, 10, 46, 14);
+    ctx.lineTo(46, 20);
+    ctx.lineTo(24, 20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = blueEdge;
+    ctx.stroke();
+    ctx.fillStyle = blueDark;
+    ctx.beginPath();
+    ctx.ellipse(12, carH - 4, 10, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(64, carH - 4, 10, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = wheelColor;
+    ctx.beginPath();
+    ctx.ellipse(12, carH - 4, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(64, carH - 4, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(38, carH - 4, 6, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    const pusherX = carX - 28;
+    drawPixelContestant(contestant, pusherX, laneY + laneH / 2 - 26, 3, {
+      shirtColor: contestant.id === gameState.tournament.currentLeaderId ? SHIRT_COLORS.LEADER : SHIRT_COLORS.DEFAULT,
+      shortsColor: "#ffffff",
+    });
   }
 
   function drawYliastuttuBanner() {
@@ -3143,6 +3507,7 @@
     onKivenheittoTap();
     onKevytheittoTap();
     onPolkyTap();
+    onPaskantyontoTap();
   }
 
   function handlePointerMove(event) {
