@@ -107,6 +107,7 @@
       phaseTimer: 0,
       currentContestantId: null,
       finishTime: null,
+      sunglassesCheererId: null,
       aiTapTimer: 0,
       aiTapInterval: 0.2,
       tapFlash: 0,
@@ -122,7 +123,7 @@
       phaseTimer: 0,
       finishedRuns: [],
       startX: 220,
-      throwLineX: 510,
+      throwLineX: 305,
       positionX: 220,
       speed: 0,
       power: 0,
@@ -130,10 +131,12 @@
       timeSinceTap: 99,
       aiTapTimer: 0,
       aiTapInterval: 0.2,
-      aiStopTargetX: 470,
+      aiStopTargetX: 280,
       throwDistance: 0,
       throwAnimT: 0,
       isFoul: false,
+      sunglassesCheererId: null,
+      cheerPositions: [],
     },
     polkyntyonto: {
       runOrder: [],
@@ -153,6 +156,7 @@
       dropSpeedThreshold: 300,
       logDropped: false,
       logDropProgress: 0,
+      sunglassesCheererId: null,
     },
     ui: {
       buttons: [],
@@ -180,6 +184,15 @@
     unlocked: false,
   };
 
+  const assets = {
+    titleBgImage: new Image(),
+    titleBgLoaded: false,
+  };
+  assets.titleBgImage.onload = () => {
+    assets.titleBgLoaded = true;
+  };
+  assets.titleBgImage.src = "./munat.jpg";
+
   function createTournamentContestant(baseContestant, controller) {
     return {
       id: baseContestant.id,
@@ -192,35 +205,28 @@
   }
 
   function bootstrapTournamentContestants() {
-    const ids = gameState.selectedContestantIds;
-    const humanSet = new Set(ids.slice(0, 1));
-
-    gameState.tournament.contestants = CONTESTANTS.filter((c) => ids.includes(c.id)).map((c) =>
-      createTournamentContestant(c, humanSet.has(c.id) ? "human" : "ai")
+    const selectedHumanId = gameState.selectedContestantIds[0] || CONTESTANTS[0].id;
+    gameState.tournament.contestants = CONTESTANTS.map((c) =>
+      createTournamentContestant(c, c.id === selectedHumanId ? "human" : "ai")
     );
     simulation.updateLeader();
   }
 
   function syncSetupContestantsToSelection() {
-    const selectedIds = gameState.selectedContestantIds;
-    const selected = CONTESTANTS.filter((c) => selectedIds.includes(c.id));
+    const selectedHumanId = gameState.selectedContestantIds[0] || CONTESTANTS[0].id;
     const existingMap = new Map(gameState.tournament.contestants.map((c) => [c.id, c]));
 
-    gameState.tournament.contestants = selected.map((base, idx) => {
+    gameState.tournament.contestants = CONTESTANTS.map((base) => {
       const prev = existingMap.get(base.id);
       return {
         id: base.id,
         name: base.name,
         stats: { ...base.stats },
         colors: { ...base.colors },
-        controller: prev?.controller ?? (idx === 0 ? "human" : "ai"),
+        controller: base.id === selectedHumanId ? "human" : "ai",
         points: prev?.points ?? 0,
       };
     });
-
-    if (!gameState.tournament.contestants.some((c) => c.controller === "human") && gameState.tournament.contestants[0]) {
-      gameState.tournament.contestants[0].controller = "human";
-    }
     simulation.updateLeader();
   }
 
@@ -281,11 +287,6 @@
     gameState.ui.buttons = [];
 
     addFullscreenButton();
-    if (isPortraitMobile()) {
-      drawRotateOverlay();
-      drawButtons();
-      return;
-    }
 
     switch (gameState.screen) {
       case SCREEN.TITLE:
@@ -323,22 +324,6 @@
   function clearCanvas() {
     ctx.fillStyle = "#140f29";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-
-  function isPortraitMobile() {
-    return window.innerHeight > window.innerWidth;
-  }
-
-  function drawRotateOverlay() {
-    ctx.fillStyle = "#d7f1ff";
-    ctx.textAlign = "center";
-    ctx.font = "bold 46px monospace";
-    ctx.fillText("KAANNA PUHELIN", canvas.width / 2, 210);
-    ctx.font = "22px monospace";
-    ctx.fillStyle = "#a3d5ff";
-    ctx.fillText("Peli toimii parhaiten vaakatilassa.", canvas.width / 2, 252);
-    ctx.fillStyle = "#ffd27d";
-    ctx.fillText("Napauta nayttoa lukitaksesi landscape (jos tuettu).", canvas.width / 2, 295);
   }
 
   function tryLockLandscape() {
@@ -416,6 +401,12 @@
   }
 
   function drawTitle() {
+    if (assets.titleBgLoaded) {
+      drawImageCover(assets.titleBgImage, 0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "rgba(20, 15, 41, 0.45)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
     ctx.fillStyle = "#d7f1ff";
     ctx.font = "bold 72px monospace";
     ctx.textAlign = "center";
@@ -425,7 +416,7 @@
     ctx.fillStyle = "#a3d5ff";
     ctx.fillText("Sinäkö tuleva munamies?", canvas.width / 2, 190);
 
-    const startBtn = { x: 340, y: 300, w: 280, h: 68, label: "ALOITA TURNAUS" };
+    const startBtn = { x: 340, y: 300, w: 280, h: 68, label: "ALOITA MUNAJAISET" };
     addButton(startBtn.x, startBtn.y, startBtn.w, startBtn.h, startBtn.label, () => {
       gameState.quickTest.enabled = false;
       setScreen(SCREEN.SELECT);
@@ -437,6 +428,15 @@
     });
 
     drawButtons();
+  }
+
+  function drawImageCover(img, x, y, w, h) {
+    const scale = Math.max(w / img.width, h / img.height);
+    const drawW = img.width * scale;
+    const drawH = img.height * scale;
+    const offsetX = x + (w - drawW) / 2;
+    const offsetY = y + (h - drawH) / 2;
+    ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
   }
 
   function drawTestMenu() {
@@ -473,7 +473,7 @@
     ctx.fillStyle = "#d7f1ff";
     ctx.font = "bold 32px monospace";
     ctx.textAlign = "left";
-    ctx.fillText("VALITSE KISAAJAT (1-8)", 70, 72);
+    ctx.fillText("VALITSE OMA KISAAJA", 70, 72);
 
     ctx.font = "16px monospace";
     CONTESTANTS.forEach((c, i) => {
@@ -512,13 +512,14 @@
       }, false);
     });
 
-    const nextBtn = { x: 720, y: 440, w: 170, h: 50, label: "SEURAAVA" };
+    const nextBtn = { x: 640, y: 440, w: 250, h: 50, label: "ALOITA MUNAJAISET" };
     addButton(nextBtn.x, nextBtn.y, nextBtn.w, nextBtn.h, nextBtn.label, () => {
       if (gameState.selectedContestantIds.length === 0) {
-        gameState.ui.message = "Valitse ainakin yksi kisaaja.";
+        gameState.ui.message = "Valitse oma kisaajasi.";
         return;
       }
-      setScreen(SCREEN.PLAYER_SETUP);
+      simulation.bootstrapTournamentContestants();
+      setScreen(SCREEN.TOURNAMENT);
     });
 
     if (gameState.ui.message) {
@@ -565,7 +566,7 @@
     });
 
     const backBtn = { x: 120, y: 400, w: 160, h: 56, label: "TAKAISIN" };
-    const playBtn = { x: 650, y: 400, w: 190, h: 56, label: "TURNAUS" };
+    const playBtn = { x: 650, y: 400, w: 190, h: 56, label: "MUNAJAISET" };
 
     addButton(backBtn.x, backBtn.y, backBtn.w, backBtn.h, backBtn.label, () => {
       setScreen(SCREEN.SELECT);
@@ -595,7 +596,7 @@
     ctx.fillStyle = "#d7f1ff";
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "left";
-    ctx.fillText("TURNAUS", 100, 95);
+    ctx.fillText("MUNAJAISET", 100, 95);
 
     ctx.font = "22px monospace";
     ctx.fillStyle = "#a3d5ff";
@@ -604,26 +605,18 @@
     ctx.fillStyle = "#d7f1ff";
     ctx.font = "20px monospace";
     ctx.fillText("Tilanne", 100, 180);
-    ctx.fillText("Ohjaus", 460, 180);
-    ctx.fillText("Paita", 680, 180);
 
     const rows = [...gameState.tournament.contestants].sort((a, b) => b.points - a.points);
     rows.forEach((c, i) => {
       const y = 215 + i * 30;
       const isLeader = c.id === gameState.tournament.currentLeaderId;
       const isChampion = c.id === gameState.tournament.championId;
+      const isHuman = c.controller === "human";
       const shirtColor = isChampion ? SHIRT_COLORS.CHAMPION : isLeader ? SHIRT_COLORS.LEADER : SHIRT_COLORS.DEFAULT;
-      ctx.fillStyle = isLeader ? "#ff6b9f" : "#d7f1ff";
-      ctx.fillText(`${i + 1}. ${c.name} (${c.points}p)`, 100, y);
-      ctx.fillStyle = "#d7f1ff";
-      ctx.fillText(c.controller === "human" ? "IHMINEN" : "TEKOALY", 460, y);
-      drawPixelContestant(c, 690, y - 16, 2, { shirtColor, shortsColor: "#ffffff" });
-      ctx.fillStyle = shirtColor;
-      ctx.fillText(
-        isChampion ? "VAALEANSININEN" : isLeader ? "PINKKI" : "VALKOINEN",
-        740,
-        y
-      );
+      ctx.fillStyle = isHuman ? "#7dffb3" : isLeader ? "#ff6b9f" : "#d7f1ff";
+      const label = `${i + 1}. ${c.name}${isHuman ? " [SINA]" : ""} (${c.points}p)`;
+      ctx.fillText(label, 100, y);
+      drawPixelContestant(c, 650, y - 16, 2, { shirtColor, shortsColor: "#ffffff" });
     });
 
     const nextEvent = EVENTS[gameState.eventIndex] ?? null;
@@ -636,7 +629,7 @@
             ? "ALOITA POLKYNTYONTO"
         : nextEvent
           ? `${nextEvent} (TULOSSA)`
-          : "TURNAUS VALMIS";
+          : "MUNAJAISET OHI";
     const continueBtn = { x: 620, y: 420, w: 240, h: 56, label: btnLabel };
     addButton(continueBtn.x, continueBtn.y, continueBtn.w, continueBtn.h, continueBtn.label, () => {
       if (nextEvent === "Soutu") {
@@ -653,7 +646,7 @@
       }
       gameState.ui.message = nextEvent
         ? "Tata lajia ei ole viela toteutettu."
-        : "Turnaus on valmis.";
+        : "Munajaiset ovat ohi.";
     });
 
     if (gameState.ui.message) {
@@ -666,17 +659,12 @@
   }
 
   function toggleContestantSelection(contestantId) {
-    const selected = gameState.selectedContestantIds;
-    const idx = selected.indexOf(contestantId);
-    if (idx >= 0) {
-      selected.splice(idx, 1);
+    const current = gameState.selectedContestantIds[0];
+    if (current === contestantId) {
+      gameState.selectedContestantIds = [];
       return;
     }
-    if (selected.length >= 8) {
-      gameState.ui.message = "Maksimi on 8 kisaajaa.";
-      return;
-    }
-    selected.push(contestantId);
+    gameState.selectedContestantIds = [contestantId];
     gameState.tournament.contestants = [];
   }
 
@@ -698,8 +686,9 @@
 
   function setupQuickTestRoster() {
     const preferredId = gameState.selectedContestantIds[0] || "pressa";
-    const preferred = CONTESTANTS.find((c) => c.id === preferredId) || CONTESTANTS[0];
-    gameState.tournament.contestants = [createTournamentContestant(preferred, "human")];
+    gameState.tournament.contestants = CONTESTANTS.map((c) =>
+      createTournamentContestant(c, c.id === preferredId ? "human" : "ai")
+    );
     gameState.tournament.lastResults = null;
     gameState.tournament.lastEventWinnerId = null;
     simulation.updateLeader();
@@ -741,12 +730,16 @@
   }
 
   function simulateSoutuAiRun(contestant) {
-    const base = 95 - contestant.stats.speed * 4.2 - contestant.stats.strength * 2.4 - contestant.stats.stamina * 2.8;
-    const jitter = (Math.random() - 0.5) * 8;
+    const base =
+      23 -
+      contestant.stats.speed * 0.45 -
+      contestant.stats.strength * 0.35 -
+      contestant.stats.stamina * 0.4;
+    const jitter = (Math.random() - 0.5) * 2.4;
     return {
       id: contestant.id,
       name: contestant.name,
-      time: Math.max(30, base + jitter),
+      time: Math.max(13, Math.min(20, base + jitter)),
     };
   }
 
@@ -853,7 +846,7 @@
     const p = gameState.polkyntyonto;
     const track = p.track;
     if (!track) {
-      return { x: 170, y: 340, angle: 0 };
+      return { x: 170, y: 340, angle: 0, headingRight: true };
     }
     const d = Math.max(0, Math.min(distance, track.totalLength));
     let seg = 0;
@@ -865,10 +858,12 @@
     const t = Math.max(0, Math.min(1, (d - segStart) / segLen));
     const p0 = track.points[seg];
     const p1 = track.points[seg + 1];
+    const headingRight = p1.x >= p0.x;
     return {
       x: p0.x + (p1.x - p0.x) * t,
       y: p0.y + (p1.y - p0.y) * t,
       angle: Math.atan2(p1.y - p0.y, p1.x - p0.x),
+      headingRight,
     };
   }
 
@@ -891,6 +886,7 @@
     p.bumpTextTimer = 0;
     p.logDropped = false;
     p.logDropProgress = 0;
+    p.sunglassesCheererId = pickSunglassesCheerer(contestant.id);
   }
 
   function buildKivenTurnQueue(humanIds, attemptsPerPlayer) {
@@ -912,7 +908,7 @@
   }
 
   function simulateKivenheittoAiRun(contestant, attempt) {
-    const foulChance = Math.max(0.03, 0.09 - contestant.stats.accuracy * 0.006);
+    const foulChance = Math.max(0.01, 0.05 - contestant.stats.accuracy * 0.003);
     const foul = Math.random() < foulChance;
     if (foul) {
       return {
@@ -924,16 +920,17 @@
       };
     }
     const distance =
-      2.4 +
-      contestant.stats.strength * 0.36 +
+      3.8 +
+      contestant.stats.strength * 0.38 +
       contestant.stats.speed * 0.05 +
-      contestant.stats.accuracy * 0.24 +
-      (Math.random() - 0.5) * 1.2;
+      contestant.stats.accuracy * 0.30 +
+      contestant.stats.stamina * 0.08 +
+      (Math.random() - 0.35) * 1.8;
     return {
       id: contestant.id,
       name: contestant.name,
       attempt,
-      distance: Math.max(2.5, Math.min(10.2, distance)),
+      distance: Math.max(4.0, Math.min(10.3, distance)),
       foul: false,
     };
   }
@@ -956,6 +953,7 @@
     soutu.phase = "intro";
     soutu.phaseTimer = 1.1;
     soutu.aiTapInterval = Math.max(0.14, 0.42 - contestant.stats.speed * 0.02);
+    soutu.sunglassesCheererId = pickSunglassesCheerer(contestant.id);
   }
 
   function createSoutuTrack() {
@@ -1080,7 +1078,7 @@
   function applyKivenTapImpulse(contestant, multiplier) {
     const k = gameState.kivenheitto;
     const baseImpulse = 15 + contestant.stats.strength * 1.8 + contestant.stats.speed * 0.9;
-    const powerGain = 3.0 + contestant.stats.strength * 0.55 + contestant.stats.stamina * 0.25;
+    const powerGain = 1.9 + contestant.stats.strength * 0.42 + contestant.stats.stamina * 0.18;
     k.speed += baseImpulse * multiplier;
     k.power += powerGain * multiplier;
     k.timeSinceTap = 0;
@@ -1113,6 +1111,31 @@
     k.throwDistance = 0;
     k.throwAnimT = 0;
     k.isFoul = false;
+    k.sunglassesCheererId = pickSunglassesCheerer(contestant.id);
+    k.cheerPositions = buildKivenCheerPositions();
+  }
+
+  function buildKivenCheerPositions() {
+    const topBand = [
+      { x: 108 + Math.random() * 18, y: 184 + Math.random() * 8 },
+      { x: 152 + Math.random() * 20, y: 186 + Math.random() * 8 },
+      { x: 194 + Math.random() * 18, y: 184 + Math.random() * 8 },
+      { x: 236 + Math.random() * 18, y: 186 + Math.random() * 8 },
+    ];
+    const throwArea = [
+      { x: 340 + Math.random() * 42, y: 276 + Math.random() * 18 },
+      { x: 388 + Math.random() * 42, y: 282 + Math.random() * 18 },
+      { x: 442 + Math.random() * 44, y: 278 + Math.random() * 20 },
+    ];
+    return [...topBand, ...throwArea];
+  }
+
+  function pickSunglassesCheerer(currentContestantId) {
+    const supporters = gameState.tournament.contestants.filter((c) => c.id !== currentContestantId);
+    if (supporters.length === 0) {
+      return null;
+    }
+    return supporters[Math.floor(Math.random() * supporters.length)].id;
   }
 
   function update(deltaSeconds) {
@@ -1161,7 +1184,7 @@
         }
       }
 
-      const drag = (76 + (10 - current.stats.stamina) * 7) * deltaSeconds;
+      const drag = (120 + (10 - current.stats.stamina) * 10) * deltaSeconds;
       soutu.speed = Math.max(0, soutu.speed - drag);
       const meterPerSecond = soutu.speed * 0.10;
       const previousDistance = soutu.currentDistance;
@@ -1266,8 +1289,8 @@
 
       k.timeSinceTap += deltaSeconds;
       k.speed = Math.max(0, k.speed - (165 + (10 - current.stats.stamina) * 8) * deltaSeconds);
-      k.power = Math.max(0, k.power - 8 * deltaSeconds);
-      k.positionX += k.speed * deltaSeconds * 0.28;
+      k.power = Math.max(0, k.power - 11 * deltaSeconds);
+      k.positionX += k.speed * deltaSeconds * 0.33;
 
       if (k.positionX >= k.throwLineX) {
         k.positionX = k.throwLineX;
@@ -1280,16 +1303,16 @@
         return;
       }
 
-      if (k.timeSinceTap > 0.32 && k.power > 3.5) {
-        const proximityBonus = Math.max(0, 1 - Math.abs(k.throwLineX - k.positionX) / 85);
+      if (k.timeSinceTap > 0.28 && k.power > 3.8) {
+        const proximityBonus = Math.max(0, 1 - Math.abs(k.throwLineX - k.positionX) / 55);
         const rawDistance =
-          1.8 +
-          Math.min(6.2, k.power * 0.18) +
-          current.stats.strength * 0.20 +
-          current.stats.accuracy * 0.16 +
-          proximityBonus * 1.9 +
-          (Math.random() - 0.5) * 1.2;
-        k.throwDistance = Math.max(2.2, Math.min(10.8, rawDistance));
+          0.7 +
+          Math.min(5.2, k.power * 0.14) +
+          current.stats.strength * 0.10 +
+          current.stats.accuracy * 0.08 +
+          proximityBonus * 3.4 +
+          (Math.random() - 0.5) * 0.9;
+        k.throwDistance = Math.max(0.6, Math.min(10.2, rawDistance));
         k.phase = "throwing";
         k.phaseTimer = 1.0;
         k.throwAnimT = 0;
@@ -1550,6 +1573,7 @@
     ctx.fillText(`Vuoro ${k.currentRunIndex + 1}/${k.turnQueue.length}: ${current.name}`, 100, 128);
     ctx.fillText(`Ohjaus: ${current.controller === "human" ? "IHMINEN" : "TEKOALY"}`, 100, 156);
     ctx.fillText(`Yritys: ${k.currentAttemptNumber}/${k.attemptsPerPlayer}`, 360, 156);
+    drawKivenLeaderboard();
 
     drawKivenheittoScene(current);
 
@@ -1669,6 +1693,21 @@
     ctx.fillText("HEITTOVIIVA", k.throwLineX - 45, 365);
 
     const y = 302;
+    drawCheeringCrowd(
+      k.cheerPositions.length > 0
+        ? k.cheerPositions
+        : [
+            { x: 110, y: 188 },
+            { x: 150, y: 190 },
+            { x: 190, y: 188 },
+            { x: 230, y: 190 },
+            { x: 270, y: 188 },
+          ],
+      contestant.id,
+      k.sunglassesCheererId,
+      2
+    );
+
     drawPixelContestant(contestant, k.positionX - 16, y - 52, 3, {
       shirtColor: contestant.id === gameState.tournament.currentLeaderId ? SHIRT_COLORS.LEADER : SHIRT_COLORS.DEFAULT,
       shortsColor: "#ffffff",
@@ -1688,6 +1727,20 @@
       drawRoundedTriangle(fx, fy, 10, "#d7e0f5");
       ctx.fillStyle = "#ffffff";
       ctx.fillText(`${k.throwDistance.toFixed(1)} m`, Math.min(field.x + field.w - 70, fx + 12), fy - 10);
+    }
+
+    const liveBest = getLiveKivenBestDistance();
+    if (liveBest > 0) {
+      const bestX = Math.min(field.x + field.w - 10, k.throwLineX + liveBest * 28);
+      ctx.strokeStyle = "#ffd27d";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(bestX, 222);
+      ctx.lineTo(bestX, 350);
+      ctx.stroke();
+      ctx.fillStyle = "#ffd27d";
+      ctx.font = "12px monospace";
+      ctx.fillText("PARAS", bestX - 18, 218);
     }
 
     ctx.fillStyle = "#cfe2ff";
@@ -1717,6 +1770,94 @@
     ctx.fill();
   }
 
+  function drawKivenLeaderboard() {
+    const rows = getKivenLiveLeaderboard();
+    const panelX = 620;
+    const panelY = 66;
+    const panelW = 240;
+    const panelH = 290;
+
+    ctx.fillStyle = "rgba(25, 18, 52, 0.85)";
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = "#a57aff";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+    ctx.fillStyle = "#d7f1ff";
+    ctx.font = "bold 16px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("KIVENHEITTO TOP", panelX + 12, panelY + 24);
+
+    ctx.font = "13px monospace";
+    rows.forEach((row, i) => {
+      const y = panelY + 48 + i * 28;
+      const color = i === 0 ? "#ffd27d" : "#d7f1ff";
+      ctx.fillStyle = color;
+      ctx.fillText(`${i + 1}. ${row.name}`, panelX + 12, y);
+      ctx.textAlign = "right";
+      ctx.fillText(row.metricText, panelX + panelW - 12, y);
+      ctx.textAlign = "left";
+    });
+  }
+
+  function getLiveKivenBestDistance() {
+    const k = gameState.kivenheitto;
+    let best = 0;
+    k.finishedRuns.forEach((run) => {
+      if (!run.foul && run.distance > best) {
+        best = run.distance;
+      }
+    });
+    if (k.phase === "throwing" && !k.isFoul) {
+      best = Math.max(best, k.throwDistance);
+    }
+    return best;
+  }
+
+  function getKivenLiveLeaderboard() {
+    const k = gameState.kivenheitto;
+    const contestants = gameState.tournament.contestants;
+    const bestById = new Map();
+
+    contestants.forEach((c) => {
+      bestById.set(c.id, 0);
+    });
+
+    k.finishedRuns.forEach((run) => {
+      if (run.foul) {
+        return;
+      }
+      const prev = bestById.get(run.id) ?? 0;
+      if (run.distance > prev) {
+        bestById.set(run.id, run.distance);
+      }
+    });
+
+    if (k.phase === "throwing" && !k.isFoul && k.currentContestantId) {
+      const prev = bestById.get(k.currentContestantId) ?? 0;
+      bestById.set(k.currentContestantId, Math.max(prev, k.throwDistance));
+    }
+
+    const rows = contestants.map((c) => {
+      const best = bestById.get(c.id) ?? 0;
+      return {
+        id: c.id,
+        name: c.name,
+        best,
+        metricText: best > 0 ? `${best.toFixed(1)} m` : "-",
+      };
+    });
+
+    rows.sort((a, b) => {
+      if (b.best !== a.best) {
+        return b.best - a.best;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    return rows;
+  }
+
   function drawSoutuScene(track, pose, contestant) {
     if (!track) {
       return;
@@ -1744,7 +1885,6 @@
     ctx.fillRect(85, 312, 20, 20);
     ctx.fillStyle = "#d7f1ff";
     ctx.font = "14px monospace";
-    ctx.fillText("LAITURI", 92, 375);
 
     ctx.strokeStyle = "#ffcf66";
     ctx.lineWidth = 4;
@@ -1753,7 +1893,6 @@
     ctx.lineTo(track.finishLineX, 356);
     ctx.stroke();
     ctx.fillStyle = "#ffcf66";
-    ctx.fillText("MAALI", track.finishLineX - 24, 198);
 
     ctx.fillStyle = "#d24545";
     ctx.beginPath();
@@ -1762,7 +1901,22 @@
     ctx.fillStyle = "#ffd7d7";
     ctx.fillRect(track.buoy.x - 3, track.buoy.y - 21, 6, 7);
     ctx.fillStyle = "#d7f1ff";
-    ctx.fillText("POIJU", track.buoy.x - 20, track.buoy.y + 34);
+
+    // Soudussa yleiso on laiturilla.
+    drawCheeringCrowd(
+      [
+        { x: 82, y: 238 },
+        { x: 102, y: 236 },
+        { x: 122, y: 238 },
+        { x: 142, y: 236 },
+        { x: 92, y: 252 },
+        { x: 112, y: 250 },
+        { x: 132, y: 252 },
+      ],
+      contestant.id,
+      gameState.soutu.sunglassesCheererId,
+      2
+    );
 
     drawBoatWake(pose);
     drawBoat(pose, contestant);
@@ -1802,6 +1956,21 @@
     ctx.fillStyle = "#254628";
     ctx.fillRect(field.x, 258, field.w, 132);
 
+    drawCheeringCrowd(
+      [
+        { x: 108, y: 188 },
+        { x: 148, y: 190 },
+        { x: 188, y: 188 },
+        { x: 228, y: 190 },
+        { x: 268, y: 188 },
+        { x: 308, y: 190 },
+        { x: 348, y: 188 },
+      ],
+      contestant.id,
+      p.sunglassesCheererId,
+      2
+    );
+
     const track = p.track;
     if (track) {
       ctx.strokeStyle = "#8f7652";
@@ -1836,43 +2005,49 @@
 
     ctx.save();
     ctx.translate(pose.x, pose.y);
-    ctx.rotate(pose.angle);
+    const tilt = Math.atan2(Math.sin(pose.angle), Math.abs(Math.cos(pose.angle)));
+    if (!pose.headingRight) {
+      ctx.scale(-1, 1);
+    }
+    ctx.rotate(tilt);
     ctx.fillStyle = "#d7c84a";
-    ctx.fillRect(-16, -8, 24, 14);
+    ctx.fillRect(-10, -10, 26, 13);
     ctx.fillStyle = "#4a4a4f";
     ctx.beginPath();
-    ctx.arc(-14, 8, 6, 0, Math.PI * 2);
-    ctx.arc(8, 8, 6, 0, Math.PI * 2);
+    ctx.arc(-5, 10, 6, 0, Math.PI * 2);
+    ctx.arc(12, 10, 6, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "#d7f1ff";
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(8, -4);
-    ctx.lineTo(22, -11);
+    ctx.moveTo(-10, -4);
+    ctx.lineTo(-24, -12);
     ctx.stroke();
     if (!p.logDropped) {
       ctx.fillStyle = "#7b4c2a";
-      ctx.fillRect(-18, -19, 28, 10);
+      ctx.fillRect(-13, -21, 30, 10);
     }
     ctx.restore();
 
     if (p.logDropped) {
       const t = p.logDropProgress;
-      const startX = pose.x - Math.cos(pose.angle) * 4;
-      const startY = pose.y - 18;
-      const endX = pose.x - 26;
+      const dir = pose.headingRight ? 1 : -1;
+      const startX = pose.x + dir * 2;
+      const startY = pose.y - 20;
+      const endX = pose.x - dir * 26;
       const endY = pose.y + 20;
       const lx = startX + (endX - startX) * t;
       const ly = startY + (endY - startY) * t + Math.sin(t * Math.PI) * 8;
       ctx.save();
       ctx.translate(lx, ly);
-      ctx.rotate(pose.angle * (1 - t) - t * 0.7);
+      ctx.rotate((Math.atan2(Math.sin(pose.angle), Math.abs(Math.cos(pose.angle))) * (1 - t)) - t * 0.7);
       ctx.fillStyle = "#6b3f20";
       ctx.fillRect(-17, -5, 34, 10);
       ctx.restore();
     }
 
-    drawPixelContestant(contestant, pose.x - 30, pose.y - 56, 3, {
+    const contestantX = pose.headingRight ? pose.x - 34 : pose.x + 10;
+    drawPixelContestant(contestant, contestantX, pose.y - 48, 3, {
       shirtColor: contestant.id === gameState.tournament.currentLeaderId ? SHIRT_COLORS.LEADER : SHIRT_COLORS.DEFAULT,
       shortsColor: "#ffffff",
     });
@@ -1881,9 +2056,15 @@
   function drawBoat(pose, contestant) {
     const x = pose.x;
     const y = pose.y;
+    const rowPhase = (performance.now() / 1000) * (1.8 + Math.min(3.2, gameState.soutu.speed * 0.035));
+    const stroke = Math.sin(rowPhase);
+    const oarSwing = stroke * 8;
+    const oarPull = stroke > 0 ? 5 : -4;
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(pose.angle);
+    // Paluumatkalla veneen keula on poijun takana oikein menosuuntaan.
+    const visualAngle = pose.stage === "paluu" || pose.stage === "maalin-jalkeen" ? pose.angle + Math.PI : pose.angle;
+    ctx.rotate(visualAngle);
 
     ctx.fillStyle = "#6d4228";
     ctx.fillRect(-22, -6, 44, 12);
@@ -1900,14 +2081,39 @@
     const oarOffset = gameState.soutu.tapFlash > 0 ? 10 : 6;
     ctx.strokeStyle = "#d9bf8b";
     ctx.lineWidth = 3;
+    // Airot liikkuvat parina edestaakse soutulyonnin mukaan.
     ctx.beginPath();
-    ctx.moveTo(-7, -2);
-    ctx.lineTo(-20, -oarOffset);
-    ctx.moveTo(7, 2);
-    ctx.lineTo(20, oarOffset);
+    ctx.moveTo(-7 + oarPull * 0.4, -2);
+    ctx.lineTo(-20 + oarPull, -oarOffset - oarSwing);
+    ctx.moveTo(7 + oarPull * 0.4, 2);
+    ctx.lineTo(20 + oarPull, oarOffset + oarSwing);
     ctx.stroke();
 
     ctx.restore();
+  }
+
+  function drawCheeringCrowd(positions, currentContestantId, sunglassesCheererId, scale) {
+    const supporters = gameState.tournament.contestants.filter((c) => c.id !== currentContestantId);
+    if (supporters.length === 0) {
+      return;
+    }
+    positions.forEach((pos, i) => {
+      const c = supporters[i % supporters.length];
+      const isLeader = c.id === gameState.tournament.currentLeaderId;
+      const isChampion = c.id === gameState.tournament.championId;
+      const shirtColor = isChampion ? SHIRT_COLORS.CHAMPION : isLeader ? SHIRT_COLORS.LEADER : SHIRT_COLORS.DEFAULT;
+      drawPixelContestant(c, pos.x, pos.y, scale, { shirtColor, shortsColor: "#ffffff" });
+      if (c.id === sunglassesCheererId) {
+        drawBigSunglasses(pos.x, pos.y, scale);
+      }
+    });
+  }
+
+  function drawBigSunglasses(x, y, scale) {
+    ctx.fillStyle = "#0b0b0b";
+    ctx.fillRect(x + 0.4 * scale, y + 4.7 * scale, 3.2 * scale, 2.0 * scale);
+    ctx.fillRect(x + 4.2 * scale, y + 4.7 * scale, 3.2 * scale, 2.0 * scale);
+    ctx.fillRect(x + 3.0 * scale, y + 5.2 * scale, 1.2 * scale, 0.7 * scale);
   }
 
   function drawResults() {
@@ -1941,7 +2147,7 @@
       ctx.fillText(String(row.totalPoints), 690, y);
     });
 
-    const continueBtn = { x: 590, y: 410, w: 250, h: 56, label: "JATKA TURNAUKSEEN" };
+    const continueBtn = { x: 590, y: 410, w: 250, h: 56, label: "JATKA MUNAJAISIA" };
     if (gameState.quickTest.enabled) {
       continueBtn.label = "TAKAISIN TESTIIN";
     }
@@ -1973,22 +2179,83 @@
     const shirtColor = style?.shirtColor ?? SHIRT_COLORS.DEFAULT;
     const shortsColor = style?.shortsColor ?? "#ffffff";
     const p = contestant.colors;
+    const isPorge = contestant.id === "porge-arthuros";
+    const isLirkki = contestant.id === "lirkki";
+    const isPokki = contestant.id === "pokki";
+    const isPressa = contestant.id === "pressa";
+    const isHarpo = contestant.id === "harpo";
+    const characterShirtColor = isPressa ? "#9a6b46" : isPorge || isLirkki ? "#c52828" : shirtColor;
 
     const px = (dx, dy, w, h, color) => {
       ctx.fillStyle = color;
       ctx.fillRect(x + dx * scale, y + dy * scale, w * scale, h * scale);
     };
 
+    if (isPorge) {
+      // Selvasti laihempi, pitka siluetti.
+      px(2, 2, 4, 2, p.hair);
+      px(2, 4, 4, 4, p.skin);
+      px(3, 5, 1, 1, p.eyes);
+      px(4, 5, 1, 1, p.eyes);
+      px(2, 8, 4, 6, characterShirtColor);
+      px(2, 14, 4, 3, shortsColor);
+      px(1, 9, 1, 4, p.skin);
+      px(6, 9, 1, 4, p.skin);
+      px(2, 17, 1, 3, p.skin);
+      px(5, 17, 1, 3, p.skin);
+      return;
+    }
+
+    if (isLirkki) {
+      // Lirkki on hoikka ja muita lyhyempi.
+      px(2, 3, 4, 2, p.hair);
+      px(2, 5, 4, 3, p.skin);
+      px(3, 6, 1, 1, p.eyes);
+      px(4, 6, 1, 1, p.eyes);
+      px(2, 8, 4, 4, characterShirtColor);
+      px(2, 12, 4, 2, shortsColor);
+      px(1, 9, 1, 3, p.skin);
+      px(6, 9, 1, 3, p.skin);
+      px(2, 14, 1, 2, p.skin);
+      px(5, 14, 1, 2, p.skin);
+      return;
+    }
+
     px(0, 2, 8, 2, p.hair);
     px(1, 4, 6, 4, p.skin);
     px(2, 5, 1, 1, p.eyes);
     px(5, 5, 1, 1, p.eyes);
-    px(0, 8, 8, 5, shirtColor);
+    px(0, 8, 8, 5, characterShirtColor);
     px(0, 13, 8, 3, shortsColor);
-    px(-1, 9, 1, 3, p.accent);
-    px(8, 9, 1, 3, p.accent);
+    px(-1, 9, 1, 3, p.skin);
+    px(8, 9, 1, 3, p.skin);
     px(1, 16, 2, 3, p.skin);
     px(5, 16, 2, 3, p.skin);
+
+    if (isPokki) {
+      // Pokille lila bolero paidan paalle.
+      px(0, 8, 2, 4, "#b57dff");
+      px(6, 8, 2, 4, "#b57dff");
+      px(2, 8, 4, 2, "#b57dff");
+    }
+
+    if (isPressa) {
+      // Pressalle oranssit viikset + lyhyt parta.
+      px(2, 7, 1, 1, "#e5791c");
+      px(3, 7, 2, 1, "#e5791c");
+      px(5, 7, 1, 1, "#e5791c");
+      px(3, 8, 2, 1, "#c76012");
+      px(3, 9, 2, 1, "#c76012");
+    }
+
+    if (isHarpo) {
+      // Harpolle mustat viikset + lyhyt parta.
+      px(2, 7, 1, 1, "#1b1b1b");
+      px(3, 7, 2, 1, "#1b1b1b");
+      px(5, 7, 1, 1, "#1b1b1b");
+      px(3, 8, 2, 1, "#0f0f0f");
+      px(3, 9, 2, 1, "#0f0f0f");
+    }
   }
 
   function drawButtons() {
