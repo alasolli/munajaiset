@@ -794,6 +794,11 @@
     ctx.fillStyle = "#b8d8f0";
     ctx.fillText("Pelin beta-versio", canvas.width / 2, 218);
 
+    ctx.font = "14px monospace";
+    ctx.fillStyle = "#a8d0e8";
+    ctx.fillText("Muistatko kuusnepan Decathlon-pelin? Nyt saat taas rämpyttää", canvas.width / 2, 252);
+    ctx.fillText("sydämesi kyllyydeestä rakastamiesi Munajaiset-hahmojen parissa.", canvas.width / 2, 272);
+
     const startBtn = { x: 340, y: 300, w: 280, h: 68, label: "ALOITA MUNAJAISET" };
     addButton(startBtn.x, startBtn.y, startBtn.w, startBtn.h, startBtn.label, () => {
       gameState.quickTest.enabled = false;
