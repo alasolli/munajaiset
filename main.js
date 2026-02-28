@@ -1756,8 +1756,8 @@
 
   function applyKevytTapImpulse(contestant, multiplier) {
     const k = gameState.kevytheitto;
-    const baseImpulse = 15 + contestant.stats.strength * 1.8 + contestant.stats.speed * 0.9;
-    const powerGain = 1.9 + contestant.stats.strength * 0.42 + contestant.stats.stamina * 0.18;
+    const baseImpulse = (15 + contestant.stats.strength * 1.8 + contestant.stats.speed * 0.9) * 2;
+    const powerGain = (1.9 + contestant.stats.strength * 0.42 + contestant.stats.stamina * 0.18) * 2;
     k.speed += baseImpulse * multiplier;
     k.power += powerGain * multiplier;
     k.timeSinceTap = 0;
@@ -2151,7 +2151,7 @@
       k.timeSinceTap += deltaSeconds;
       k.speed = Math.max(0, k.speed - (165 + (10 - current.stats.stamina) * 8) * deltaSeconds);
       k.power = Math.max(0, k.power - 11 * deltaSeconds);
-      k.positionX += k.speed * deltaSeconds * 0.33;
+      k.positionX += k.speed * deltaSeconds * 0.66;
 
       if (k.positionX >= k.throwLineX) {
         k.positionX = k.throwLineX;
@@ -2669,7 +2669,8 @@
       entry.totalPoints = contestant ? contestant.points : points;
     });
     gameState.tournament.lastEventWinnerId = ranked[0]?.id ?? null;
-    gameState.tournament.championId = ranked[0]?.id ?? gameState.tournament.currentLeaderId;
+    const byTotalPoints = [...gameState.tournament.contestants].sort((a, b) => b.points - a.points);
+    gameState.tournament.championId = byTotalPoints[0]?.id ?? gameState.tournament.currentLeaderId;
     simulation.updateLeader();
     gameState.tournament.lastResults = {
       eventName: "Triathlon",
@@ -2753,9 +2754,9 @@
     ctx.fillStyle = "#a3d5ff";
     ctx.fillText(`Vuoro ${k.currentRunIndex + 1}/${k.turnQueue.length}: ${current.name}`, 100, 128);
     ctx.fillText(`Yritys: ${k.currentAttemptNumber}/${k.attemptsPerPlayer}`, 360, 156);
-    drawKivenLeaderboard();
 
     drawKivenheittoScene(current);
+    drawKivenLeaderboard();
 
     ctx.fillStyle = "#d7f1ff";
     ctx.font = "18px monospace";
@@ -2802,9 +2803,9 @@
     ctx.fillStyle = "#a3d5ff";
     ctx.fillText(`Vuoro ${k.currentRunIndex + 1}/${k.turnQueue.length}: ${current.name}`, 100, 128);
     ctx.fillText(`Yritys: ${k.currentAttemptNumber}/${k.attemptsPerPlayer}`, 360, 156);
-    drawKevytLeaderboard();
 
     drawKevytheittoScene(current);
+    drawKevytLeaderboard();
 
     ctx.fillStyle = "#d7f1ff";
     ctx.font = "18px monospace";
@@ -4148,6 +4149,29 @@
         shortsColor: "#ffffff",
       });
     }
+    const ranked = [...gameState.tournament.contestants].sort((a, b) => b.points - a.points);
+    const lbX = 520;
+    const lbY = 258;
+    ctx.fillStyle = "rgba(25, 18, 52, 0.85)";
+    ctx.fillRect(lbX, lbY, 340, 128);
+    ctx.strokeStyle = "#a57aff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(lbX, lbY, 340, 128);
+    ctx.fillStyle = "#d7f1ff";
+    ctx.font = "bold 14px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("LOPPUTULOS", lbX + 12, lbY + 22);
+    ctx.fillText("Pisteet", lbX + 300, lbY + 22);
+    ctx.font = "13px monospace";
+    ranked.forEach((c, i) => {
+      const yy = lbY + 42 + i * 14;
+      const isChamp = c.id === championId;
+      ctx.fillStyle = isChamp ? "#ffcf66" : "#d7f1ff";
+      ctx.fillText(`${i + 1}. ${c.name}`, lbX + 12, yy);
+      ctx.textAlign = "right";
+      ctx.fillText(String(c.points), lbX + 328, yy);
+      ctx.textAlign = "left";
+    });
     const confetti = gameState.finalConfetti || [];
     if (confetti.length === 0 && typeof gameState.finalConfetti === "undefined") {
       gameState.finalConfetti = [];
