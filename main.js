@@ -9,11 +9,12 @@
     TOURNAMENT: "TOURNAMENT",
     GAME_SOUTU: "GAME_SOUTU",
     GAME_KIVENHEITTO: "GAME_KIVENHEITTO",
+    GAME_KEVYTHEITTO: "GAME_KEVYTHEITTO",
     GAME_POLKYNTYONTO: "GAME_POLKYNTYONTO",
     RESULTS: "RESULTS",
   });
 
-  const EVENTS = ["Soutu", "Kivenheitto", "Polkyntyonto"];
+  const EVENTS = ["Soutu", "Kivenheitto", "Polkyntyonto", "Kevyen esineen heitto"];
 
   const CONTESTANTS = [
     {
@@ -140,6 +141,32 @@
       sunglassesCheererId: null,
       cheerPositions: [],
     },
+    kevytheitto: {
+      runOrder: [],
+      turnQueue: [],
+      currentRunIndex: 0,
+      currentAttemptNumber: 1,
+      attemptsPerPlayer: 3,
+      currentContestantId: null,
+      phase: "idle",
+      phaseTimer: 0,
+      finishedRuns: [],
+      startX: 220,
+      throwLineX: 305,
+      positionX: 220,
+      speed: 0,
+      power: 0,
+      tapFlash: 0,
+      timeSinceTap: 99,
+      aiTapTimer: 0,
+      aiTapInterval: 0.2,
+      aiStopTargetX: 280,
+      throwDistance: 0,
+      throwAnimT: 0,
+      isFoul: false,
+      sunglassesCheererId: null,
+      cheerPositions: [],
+    },
     polkyntyonto: {
       runOrder: [],
       currentRunIndex: 0,
@@ -186,7 +213,13 @@
   const audio = {
     ctx: null,
     unlocked: false,
+    musicGain: null,
+    musicPlaying: false,
+    musicTimeouts: [],
   };
+
+  // Ladattu MIDI-melodia (hurtti.mid). Jos ei lataudu, ei soiteta mitään.
+  let selectMusicNotes = [];
 
   const assets = {
     titleBgImage: new Image(),
@@ -246,10 +279,16 @@
   }
 
   function setScreen(nextScreen) {
+    if (gameState.screen === SCREEN.SELECT && nextScreen !== SCREEN.SELECT) {
+      stopSelectMusic();
+    }
     gameState.screen = nextScreen;
     gameState.ui.message = "";
     if (nextScreen === SCREEN.PLAYER_SETUP) {
       simulation.syncSetupContestantsToSelection();
+    }
+    if (nextScreen === SCREEN.SELECT) {
+      startSelectMusic();
     }
   }
 
@@ -280,6 +319,245 @@
     amp.connect(audio.ctx.destination);
     osc.start(now);
     osc.stop(now + duration);
+  }
+
+  function playC64Note(frequency, duration, startTime, masterGain) {
+    if (!audio.ctx || !masterGain) {
+      return;
+    }
+    const osc = audio.ctx.createOscillator();
+    const amp = audio.ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = frequency;
+    const t0 = startTime;
+    const attack = 0.012;
+    const decay = 0.04;
+    const sustain = 0.08;
+    amp.gain.setValueAtTime(0, t0);
+    amp.gain.linearRampToValueAtTime(0.2, t0 + attack);
+    amp.gain.linearRampToValueAtTime(sustain, t0 + attack + decay);
+    amp.gain.setValueAtTime(sustain, t0 + Math.max(attack + decay, duration - 0.02));
+    amp.gain.linearRampToValueAtTime(0.0001, t0 + duration);
+    osc.connect(amp);
+    amp.connect(masterGain);
+    osc.start(t0);
+    osc.stop(t0 + duration);
+  }
+
+  function readMidVLQ(data, offset) {
+    let v = 0;
+    let shift = 0;
+    let i = offset;
+    for (;;) {
+      const b = data[i];
+      i += 1;
+      v = (v << 7) | (b & 0x7f);
+      if ((b & 0x80) === 0) {
+        return { value: v, next: i };
+      }
+      shift += 7;
+      if (shift >= 28) {
+        return { value: 0, next: i };
+      }
+    }
+  }
+
+  function parseMidToNotes(arrayBuffer) {
+    const data = new Uint8Array(arrayBuffer);
+    const view = new DataView(arrayBuffer);
+    if (data.length < 14 || String.fromCharCode(data[0], data[1], data[2], data[3]) !== "MThd") {
+      return [];
+    }
+    const headerLen = view.getUint32(4, false);
+    const format = view.getUint16(8, false);
+    const numTracks = view.getUint16(10, false);
+    let division = view.getUint16(12, false);
+    if (division & 0x8000) {
+      return [];
+    }
+    const ticksPerQuarter = division & 0x7fff;
+    let globalTempoUsec = 500000;
+    const allNotes = [];
+    let pos = 14 + (headerLen > 6 ? headerLen - 6 : 0);
+    for (let tr = 0; tr < numTracks && pos + 8 <= data.length; tr++) {
+      if (String.fromCharCode(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]) !== "MTrk") {
+        break;
+      }
+      const trackEnd = pos + 8 + view.getUint32(pos + 4, false);
+      pos += 8;
+      let tick = 0;
+      let status = 0;
+      const trackNotes = [];
+      const openNotes = {};
+      while (pos < trackEnd) {
+        const vlq = readMidVLQ(data, pos);
+        pos = vlq.next;
+        tick += vlq.value;
+        if (pos >= trackEnd) break;
+        let b = data[pos];
+        if (b >= 0x80) {
+          status = b;
+          pos += 1;
+        }
+        if (pos >= trackEnd) break;
+        if (status === 0xff) {
+          const metaType = data[pos];
+          pos += 1;
+          const metaLen = data[pos];
+          pos += 1;
+          if (metaType === 0x51 && metaLen === 3 && pos + 3 <= trackEnd) {
+            globalTempoUsec = (data[pos] << 16) | (data[pos + 1] << 8) | data[pos + 2];
+          }
+          pos += metaLen;
+          continue;
+        }
+        if (status === 0xf0 || status === 0xf7) {
+          const len = data[pos];
+          pos += 1 + len;
+          continue;
+        }
+        const cmd = status >>> 4;
+        const ch = status & 0x0f;
+        if (cmd === 0x9) {
+          const note = data[pos];
+          const vel = data[pos + 1];
+          pos += 2;
+          if (vel > 0) {
+            openNotes[note] = tick;
+          } else {
+            if (openNotes[note] != null) {
+              trackNotes.push({ note, start: openNotes[note], end: tick });
+              delete openNotes[note];
+            }
+          }
+          continue;
+        }
+        if (cmd === 0x8) {
+          const note = data[pos];
+          pos += 2;
+          if (openNotes[note] != null) {
+            trackNotes.push({ note, start: openNotes[note], end: tick });
+            delete openNotes[note];
+          }
+          continue;
+        }
+        if (cmd === 0xa || cmd === 0xb || cmd === 0xe) {
+          pos += 2;
+          continue;
+        }
+        if (cmd === 0xc || cmd === 0xd) {
+          pos += 1;
+          continue;
+        }
+        pos += 1;
+      }
+      if (trackNotes.length > 0) {
+        allNotes.push({ trackNotes, ticksPerQuarter });
+      }
+    }
+    if (allNotes.length === 0) {
+      return [];
+    }
+    let best = allNotes[0];
+    allNotes.forEach((t) => {
+      if (t.trackNotes.length > best.trackNotes.length) best = t;
+    });
+    const tpq = best.ticksPerQuarter;
+    const tempo = globalTempoUsec;
+    const secPerTick = (tempo / 1e6) / tpq;
+    const out = [];
+    best.trackNotes.forEach((n) => {
+      const startSec = n.start * secPerTick;
+      const duration = Math.max(0.02, (n.end - n.start) * secPerTick);
+      const freq = 440 * Math.pow(2, (n.note - 69) / 12);
+      out.push({ f: freq, d: duration, t: startSec });
+    });
+    out.sort((a, b) => a.t - b.t);
+    let lastEnd = 0;
+    const result = [];
+    out.forEach((n) => {
+      const gap = n.t - lastEnd;
+      if (gap > 0.02) {
+        result.push({ r: true, d: gap });
+      }
+      result.push({ f: n.f, d: n.d });
+      lastEnd = n.t + n.d;
+    });
+    return result;
+  }
+
+  function loadSelectMusicMidi(onLoaded) {
+    if (selectMusicNotes.length > 0) {
+      return;
+    }
+    if (typeof location !== "undefined" && location.protocol === "file:") {
+      return;
+    }
+    fetch("./hurtti.mid")
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error("not found"))))
+      .then((buf) => {
+        const notes = parseMidToNotes(buf);
+        if (notes.length > 0) {
+          selectMusicNotes = notes;
+          if (onLoaded) onLoaded();
+        }
+      })
+      .catch(() => {});
+  }
+
+  function startSelectMusic() {
+    ensureAudioContext();
+    if (!audio.ctx) {
+      return;
+    }
+    if (typeof audio.ctx.resume === "function") {
+      audio.ctx.resume().catch(() => {});
+    }
+    loadSelectMusicMidi(() => {
+      if (gameState.screen !== SCREEN.SELECT) return;
+      startSelectMusic();
+    });
+    if (selectMusicNotes.length === 0) {
+      return;
+    }
+    stopSelectMusic();
+    audio.musicPlaying = true;
+    audio.musicGain = audio.ctx.createGain();
+    audio.musicGain.gain.value = 0.35;
+    audio.musicGain.connect(audio.ctx.destination);
+
+    let time = audio.ctx.currentTime + 0.15;
+
+    function scheduleLoop() {
+      if (!audio.musicPlaying || !audio.musicGain) {
+        return;
+      }
+      time = Math.max(time, audio.ctx.currentTime + 0.02);
+      const loopStart = time;
+      selectMusicNotes.forEach((n) => {
+        if (n.r) {
+          time += n.d;
+          return;
+        }
+        playC64Note(n.f, n.d, time, audio.musicGain);
+        time += n.d;
+      });
+      const id = setTimeout(scheduleLoop, Math.max(100, (time - loopStart) * 1000 - 50));
+      audio.musicTimeouts.push(id);
+    }
+    scheduleLoop();
+  }
+
+  function stopSelectMusic() {
+    audio.musicPlaying = false;
+    audio.musicTimeouts.forEach(clearTimeout);
+    audio.musicTimeouts.length = 0;
+    if (audio.ctx && audio.musicGain) {
+      const now = audio.ctx.currentTime;
+      audio.musicGain.gain.setValueAtTime(audio.musicGain.gain.value, now);
+      audio.musicGain.gain.linearRampToValueAtTime(0.0001, now + 0.12);
+    }
+    audio.musicGain = null;
   }
 
   function addButton(x, y, w, h, label, onClick, visible = true) {
@@ -313,6 +591,9 @@
         break;
       case SCREEN.GAME_KIVENHEITTO:
         drawKivenheitto();
+        break;
+      case SCREEN.GAME_KEVYTHEITTO:
+        drawKevytheitto();
         break;
       case SCREEN.GAME_POLKYNTYONTO:
         drawPolkyntyonto();
@@ -473,10 +754,10 @@
     ctx.fillStyle = "#a3d5ff";
     ctx.fillText("Avaa valittu laji suoraan testiin (1 ihmispelaaja).", 190, 155);
 
-    const events = ["Soutu", "Kivenheitto", "Polkyntyonto"];
+    const events = ["Soutu", "Kivenheitto", "Polkyntyonto", "Kevyen esineen heitto"];
     events.forEach((eventName, idx) => {
-      const y = 200 + idx * 72;
-      addButton(210, y, 360, 56, eventName.toUpperCase(), () => {
+      const y = 186 + idx * 56;
+      addButton(210, y, 360, 48, eventName.toUpperCase(), () => {
         startQuickTestForEvent(eventName);
       });
     });
@@ -651,6 +932,8 @@
           ? "ALOITA KIVENHEITTO"
           : nextEvent === "Polkyntyonto"
             ? "ALOITA POLKYNTYONTO"
+            : nextEvent === "Kevyen esineen heitto"
+              ? "ALOITA KEVYTHEITTO"
         : nextEvent
           ? `${nextEvent} (TULOSSA)`
           : "MUNAJAISET OHI";
@@ -666,6 +949,10 @@
       }
       if (nextEvent === "Polkyntyonto") {
         startPolkyntyontoEvent();
+        return;
+      }
+      if (nextEvent === "Kevyen esineen heitto") {
+        startKevytheittoEvent();
         return;
       }
       gameState.ui.message = nextEvent
@@ -733,6 +1020,10 @@
       startPolkyntyontoEvent();
       return;
     }
+    if (eventName === "Kevyen esineen heitto") {
+      startKevytheittoEvent();
+      return;
+    }
     setScreen(SCREEN.TEST_MENU);
     gameState.ui.message = "Lajia ei ole viela toteutettu.";
   }
@@ -796,6 +1087,23 @@
     }
     setupCurrentPolkyRun();
     setScreen(SCREEN.GAME_POLKYNTYONTO);
+  }
+
+  function startKevytheittoEvent() {
+    const k = gameState.kevytheitto;
+    k.runOrder = getHumanContestants().map((c) => c.id);
+    k.turnQueue = buildKivenTurnQueue(k.runOrder, k.attemptsPerPlayer);
+    k.currentRunIndex = 0;
+    k.currentAttemptNumber = 1;
+    k.finishedRuns = getAiContestants().flatMap((ai) =>
+      simulateKevytheittoAiAttempts(ai, k.attemptsPerPlayer)
+    );
+    if (k.turnQueue.length === 0) {
+      finalizeKevytheittoResults();
+      return;
+    }
+    setupCurrentKevytRun();
+    setScreen(SCREEN.GAME_KEVYTHEITTO);
   }
 
   function simulatePolkyAiRun(contestant) {
@@ -966,6 +1274,42 @@
     };
   }
 
+  function simulateKevytheittoAiAttempts(contestant, attemptsPerPlayer) {
+    const attempts = [];
+    for (let attempt = 1; attempt <= attemptsPerPlayer; attempt += 1) {
+      attempts.push(simulateKevytheittoAiRun(contestant, attempt));
+    }
+    return attempts;
+  }
+
+  function simulateKevytheittoAiRun(contestant, attempt) {
+    const foulChance = Math.max(0.02, 0.06 - contestant.stats.accuracy * 0.003);
+    const foul = Math.random() < foulChance;
+    if (foul) {
+      return {
+        id: contestant.id,
+        name: contestant.name,
+        attempt,
+        distance: 0,
+        foul: true,
+      };
+    }
+    const distance =
+      1.1 +
+      contestant.stats.strength * 0.12 +
+      contestant.stats.speed * 0.03 +
+      contestant.stats.accuracy * 0.09 +
+      contestant.stats.stamina * 0.03 +
+      (Math.random() - 0.35) * 0.55;
+    return {
+      id: contestant.id,
+      name: contestant.name,
+      attempt,
+      distance: Math.max(1.3, Math.min(3.4, distance)),
+      foul: false,
+    };
+  }
+
   function setupCurrentSoutuRun() {
     const soutu = gameState.soutu;
     const contestantId = soutu.runOrder[soutu.currentRunIndex];
@@ -992,19 +1336,22 @@
   function createSoutuTrack() {
     const start = { x: 190, y: 330 };
     const buoy = { x: 720, y: 240 };
-    const turnRadius = 52;
-    const approach = { x: buoy.x - turnRadius, y: 250 };
+    const turnRadius = 34;
+    const approach = { x: buoy.x, y: buoy.y + turnRadius };
+    const arcExit = { x: buoy.x, y: buoy.y - turnRadius };
     const finishLineX = start.x;
     const postFinishEnd = { x: 70, y: 250 };
     const startToApproach = distance2d(start.x, start.y, approach.x, approach.y);
-    const turnLength = Math.PI * 2 * turnRadius;
-    const returnLength = distance2d(approach.x, approach.y, postFinishEnd.x, postFinishEnd.y);
-    const finishT = Math.max(0, Math.min(1, (approach.x - finishLineX) / (approach.x - postFinishEnd.x)));
+    const turnLength = Math.PI * turnRadius;
+    const returnLength = distance2d(arcExit.x, arcExit.y, postFinishEnd.x, postFinishEnd.y);
+    const denom = arcExit.x - postFinishEnd.x;
+    const finishT = Math.max(0, Math.min(1, Math.abs(denom) < 0.001 ? 1 : (arcExit.x - finishLineX) / denom));
     const finishDistance = startToApproach + turnLength + returnLength * finishT;
     return {
       start,
       buoy,
       approach,
+      arcExit,
       finishLineX,
       postFinishEnd,
       turnRadius,
@@ -1039,7 +1386,7 @@
     const dAfterApproach = d - track.startToApproach;
     if (dAfterApproach <= track.turnLength) {
       const circleT = dAfterApproach / track.turnLength;
-      const angleAround = Math.PI - circleT * (Math.PI * 2);
+      const angleAround = Math.PI / 2 - circleT * Math.PI;
       const x = track.buoy.x + Math.cos(angleAround) * track.turnRadius;
       const y = track.buoy.y + Math.sin(angleAround) * track.turnRadius;
       const tangentAngle = angleAround - Math.PI / 2;
@@ -1048,9 +1395,9 @@
 
     const dReturn = dAfterApproach - track.turnLength;
     const t = Math.min(1, dReturn / track.returnLength);
-    const x = track.approach.x + (track.postFinishEnd.x - track.approach.x) * t;
-    const y = track.approach.y + (track.postFinishEnd.y - track.approach.y) * t;
-    const angle = Math.atan2(track.postFinishEnd.y - track.approach.y, track.postFinishEnd.x - track.approach.x);
+    const x = track.arcExit.x + (track.postFinishEnd.x - track.arcExit.x) * t;
+    const y = track.arcExit.y + (track.postFinishEnd.y - track.arcExit.y) * t;
+    const angle = Math.atan2(track.postFinishEnd.y - track.arcExit.y, track.postFinishEnd.x - track.arcExit.x);
     return { x, y, angle, stage: x <= track.finishLineX ? "maalin-jalkeen" : "paluu" };
   }
 
@@ -1060,6 +1407,10 @@
 
   function getCurrentKivenContestant() {
     return gameState.tournament.contestants.find((c) => c.id === gameState.kivenheitto.currentContestantId) || null;
+  }
+
+  function getCurrentKevytContestant() {
+    return gameState.tournament.contestants.find((c) => c.id === gameState.kevytheitto.currentContestantId) || null;
   }
 
   function isCurrentSoutuHuman() {
@@ -1099,6 +1450,18 @@
     applyKivenTapImpulse(current, 1);
   }
 
+  function onKevytheittoTap() {
+    const k = gameState.kevytheitto;
+    if (gameState.screen !== SCREEN.GAME_KEVYTHEITTO || k.phase !== "running") {
+      return;
+    }
+    const current = getCurrentKevytContestant();
+    if (!current || current.controller !== "human") {
+      return;
+    }
+    applyKevytTapImpulse(current, 1);
+  }
+
   function onPolkyTap() {
     const p = gameState.polkyntyonto;
     if (gameState.screen !== SCREEN.GAME_POLKYNTYONTO) {
@@ -1131,8 +1494,48 @@
     playBeep(500 + contestant.stats.strength * 18, 0.025, 0.022);
   }
 
+  function applyKevytTapImpulse(contestant, multiplier) {
+    const k = gameState.kevytheitto;
+    const baseImpulse = 15 + contestant.stats.strength * 1.8 + contestant.stats.speed * 0.9;
+    const powerGain = 1.9 + contestant.stats.strength * 0.42 + contestant.stats.stamina * 0.18;
+    k.speed += baseImpulse * multiplier;
+    k.power += powerGain * multiplier;
+    k.timeSinceTap = 0;
+    k.tapFlash = 0.1;
+    playBeep(700 + contestant.stats.accuracy * 14, 0.02, 0.02);
+  }
+
   function setupCurrentKivenRun() {
     const k = gameState.kivenheitto;
+    const turn = k.turnQueue[k.currentRunIndex];
+    const contestantId = turn?.id;
+    const contestant = gameState.tournament.contestants.find((c) => c.id === contestantId);
+    if (!contestant) {
+      return;
+    }
+    k.currentAttemptNumber = turn.attempt;
+    k.currentContestantId = contestant.id;
+    k.phase = "intro";
+    k.phaseTimer = 1.0;
+    k.positionX = k.startX;
+    k.speed = 0;
+    k.power = 0;
+    k.tapFlash = 0;
+    k.timeSinceTap = 99;
+    k.aiTapTimer = 0;
+    k.aiTapInterval = Math.max(0.11, 0.28 - contestant.stats.speed * 0.014);
+    const stopVariance = (Math.random() - 0.5) * 50;
+    const baseStop = k.throwLineX - (34 - contestant.stats.accuracy * 2.2);
+    k.aiStopTargetX = Math.min(k.throwLineX - 8, Math.max(k.startX + 125, baseStop + stopVariance));
+    k.throwDistance = 0;
+    k.throwAnimT = 0;
+    k.isFoul = false;
+    k.sunglassesCheererId = pickSunglassesCheerer(contestant.id);
+    k.cheerPositions = buildKivenCheerPositions();
+  }
+
+  function setupCurrentKevytRun() {
+    const k = gameState.kevytheitto;
     const turn = k.turnQueue[k.currentRunIndex];
     const contestantId = turn?.id;
     const contestant = gameState.tournament.contestants.find((c) => c.id === contestantId);
@@ -1190,6 +1593,10 @@
     }
     if (gameState.screen === SCREEN.GAME_KIVENHEITTO) {
       updateKivenheitto(deltaSeconds);
+      return;
+    }
+    if (gameState.screen === SCREEN.GAME_KEVYTHEITTO) {
+      updateKevytheitto(deltaSeconds);
       return;
     }
     if (gameState.screen === SCREEN.GAME_POLKYNTYONTO) {
@@ -1440,6 +1847,143 @@
     setScreen(SCREEN.RESULTS);
   }
 
+  function updateKevytheitto(deltaSeconds) {
+    const k = gameState.kevytheitto;
+    const current = getCurrentKevytContestant();
+    if (!current) {
+      return;
+    }
+
+    if (k.tapFlash > 0) {
+      k.tapFlash -= deltaSeconds;
+    }
+
+    if (k.phase === "intro") {
+      k.phaseTimer -= deltaSeconds;
+      if (k.phaseTimer <= 0) {
+        k.phase = "running";
+        k.timeSinceTap = 99;
+      }
+      return;
+    }
+
+    if (k.phase === "running") {
+      if (current.controller === "ai" && k.positionX < k.aiStopTargetX) {
+        k.aiTapTimer += deltaSeconds;
+        if (k.aiTapTimer >= k.aiTapInterval) {
+          k.aiTapTimer = 0;
+          applyKevytTapImpulse(current, 0.92 + Math.random() * 0.18);
+        }
+      }
+
+      k.timeSinceTap += deltaSeconds;
+      k.speed = Math.max(0, k.speed - (165 + (10 - current.stats.stamina) * 8) * deltaSeconds);
+      k.power = Math.max(0, k.power - 11 * deltaSeconds);
+      k.positionX += k.speed * deltaSeconds * 0.33;
+
+      if (k.positionX >= k.throwLineX) {
+        k.positionX = k.throwLineX;
+        k.isFoul = true;
+        k.throwDistance = 0;
+        k.phase = "throwing";
+        k.phaseTimer = 0.9;
+        k.throwAnimT = 0;
+        playBeep(210, 0.12, 0.05);
+        return;
+      }
+
+      if (k.timeSinceTap > 0.28 && k.power > 3.8) {
+        const proximityBonus = Math.max(0, 1 - Math.abs(k.throwLineX - k.positionX) / 55);
+        const rawDistance =
+          (0.7 +
+            Math.min(5.2, k.power * 0.14) +
+            current.stats.strength * 0.10 +
+            current.stats.accuracy * 0.08 +
+            proximityBonus * 3.4 +
+            (Math.random() - 0.5) * 0.9) /
+          3;
+        k.throwDistance = Math.max(0.2, Math.min(3.4, rawDistance));
+        k.phase = "throwing";
+        k.phaseTimer = 1.0;
+        k.throwAnimT = 0;
+        playBeep(980, 0.045, 0.05);
+      }
+      return;
+    }
+
+    if (k.phase === "throwing") {
+      k.phaseTimer -= deltaSeconds;
+      k.throwAnimT = Math.min(1, k.throwAnimT + deltaSeconds * 1.6);
+      if (k.phaseTimer <= 0) {
+        k.finishedRuns.push({
+          id: current.id,
+          name: current.name,
+          attempt: k.currentAttemptNumber,
+          distance: k.throwDistance,
+          foul: k.isFoul,
+        });
+        k.phase = "betweenRuns";
+        k.phaseTimer = 1.0;
+      }
+      return;
+    }
+
+    if (k.phase === "betweenRuns") {
+      k.phaseTimer -= deltaSeconds;
+      if (k.phaseTimer > 0) {
+        return;
+      }
+      k.currentRunIndex += 1;
+      if (k.currentRunIndex >= k.turnQueue.length) {
+        finalizeKevytheittoResults();
+      } else {
+        setupCurrentKevytRun();
+      }
+    }
+  }
+
+  function finalizeKevytheittoResults() {
+    const attempts = gameState.kevytheitto.finishedRuns;
+    const ranked = gameState.tournament.contestants.map((contestant) => {
+      const ownAttempts = attempts.filter((a) => a.id === contestant.id);
+      let best = -1;
+      ownAttempts.forEach((a) => {
+        if (!a.foul && a.distance > best) {
+          best = a.distance;
+        }
+      });
+      return {
+        id: contestant.id,
+        name: contestant.name,
+        foul: best < 0,
+        distance: best < 0 ? 0 : best,
+        metricText: best < 0 ? "HYL." : `${best.toFixed(1)} m`,
+      };
+    });
+    ranked.sort((a, b) => b.distance - a.distance);
+    const pointsByRank = [3, 2, 1];
+
+    ranked.forEach((entry, idx) => {
+      const points = pointsByRank[idx] ?? 0;
+      const contestant = gameState.tournament.contestants.find((c) => c.id === entry.id);
+      if (contestant) {
+        contestant.points += points;
+      }
+      entry.rank = idx + 1;
+      entry.pointsAwarded = points;
+      entry.totalPoints = contestant ? contestant.points : points;
+    });
+
+    gameState.tournament.lastEventWinnerId = ranked[0]?.id ?? null;
+    gameState.tournament.lastResults = {
+      eventName: "Kevyen esineen heitto",
+      metricLabel: "Pituus",
+      rows: ranked,
+    };
+    simulation.updateLeader();
+    setScreen(SCREEN.RESULTS);
+  }
+
   function updatePolkyntyonto(deltaSeconds) {
     const p = gameState.polkyntyonto;
     const current = gameState.tournament.contestants.find((c) => c.id === p.currentContestantId);
@@ -1651,6 +2195,55 @@
     }
   }
 
+  function drawKevytheitto() {
+    drawPanel(60, 40, 840, 460);
+    const k = gameState.kevytheitto;
+    const current = getCurrentKevytContestant();
+    if (!current) {
+      return;
+    }
+
+    ctx.fillStyle = "#d7f1ff";
+    ctx.font = "bold 34px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("KEVYEN ESINEEN HEITTO", 100, 92);
+    ctx.font = "20px monospace";
+    ctx.fillStyle = "#a3d5ff";
+    ctx.fillText(`Vuoro ${k.currentRunIndex + 1}/${k.turnQueue.length}: ${current.name}`, 100, 128);
+    ctx.fillText(`Yritys: ${k.currentAttemptNumber}/${k.attemptsPerPlayer}`, 360, 156);
+    drawKevytLeaderboard();
+
+    drawKevytheittoScene(current);
+
+    ctx.fillStyle = "#d7f1ff";
+    ctx.font = "18px monospace";
+    ctx.fillText(`Voima: ${Math.round(k.power)}`, 100, 415);
+    ctx.fillText(`Nopeus: ${Math.round(k.speed)}`, 250, 415);
+    ctx.fillText(`Sijainti: ${(k.positionX - k.startX).toFixed(0)} px`, 410, 415);
+
+    if (k.phase === "intro") {
+      ctx.fillStyle = "#ffd27d";
+      ctx.fillText("Valmistaudu...", 100, 445);
+    } else if (k.phase === "running") {
+      if (current.controller === "human") {
+        ctx.fillStyle = "#7dffb3";
+        ctx.fillText("HAKKAA! LOPETA ENNEN HEITTOVIIVAA.", 100, 445);
+      } else {
+        ctx.fillStyle = "#ffc77d";
+        ctx.fillText("Tekoaly rakentaa heittoa...", 100, 445);
+      }
+    } else if (k.phase === "throwing") {
+      ctx.fillStyle = k.isFoul ? "#ff8f8f" : "#7dffb3";
+      ctx.fillText(k.isFoul ? "HYLATTY: VIIVA YLITETTY!" : `Heitto: ${k.throwDistance.toFixed(1)} m`, 100, 445);
+      if (k.isFoul) {
+        drawYliastuttuBanner();
+      }
+    } else {
+      ctx.fillStyle = "#a3d5ff";
+      ctx.fillText("Seuraava kisaaja...", 100, 445);
+    }
+  }
+
   function drawPolkyntyonto() {
     drawPanel(60, 40, 840, 460);
     const p = gameState.polkyntyonto;
@@ -1794,6 +2387,168 @@
       const mx = Math.min(field.x + field.w - 10, k.throwLineX + m * 28);
       ctx.fillRect(mx, 318, 2, 24);
       ctx.fillText(`${m}m`, mx - 8, 356);
+    });
+  }
+
+  function drawKevytheittoScene(contestant) {
+    const k = gameState.kevytheitto;
+    const field = { x: 90, y: 185, w: 790, h: 190 };
+
+    ctx.fillStyle = "#355f35";
+    ctx.fillRect(field.x, field.y, field.w, field.h);
+    for (let i = 0; i < 11; i += 1) {
+      ctx.strokeStyle = i % 2 === 0 ? "#406d40" : "#447344";
+      ctx.beginPath();
+      ctx.moveTo(field.x, field.y + 10 + i * 16);
+      ctx.lineTo(field.x + field.w, field.y + 10 + i * 16);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#6d5a48";
+    ctx.fillRect(field.x, 250, field.w, 70);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(k.throwLineX, 220);
+    ctx.lineTo(k.throwLineX, 350);
+    ctx.stroke();
+    ctx.fillStyle = "#d7f1ff";
+    ctx.font = "14px monospace";
+    ctx.fillText("HEITTOVIIVA", k.throwLineX - 45, 365);
+
+    const y = 302;
+    drawCheeringCrowd(
+      k.cheerPositions.length > 0
+        ? k.cheerPositions
+        : [
+            { x: 110, y: 188 },
+            { x: 150, y: 190 },
+            { x: 190, y: 188 },
+            { x: 230, y: 190 },
+            { x: 270, y: 188 },
+          ],
+      contestant.id,
+      k.sunglassesCheererId,
+      2
+    );
+
+    drawPixelContestant(contestant, k.positionX - 16, y - 52, 3, {
+      shirtColor: contestant.id === gameState.tournament.currentLeaderId ? SHIRT_COLORS.LEADER : SHIRT_COLORS.DEFAULT,
+      shortsColor: "#ffffff",
+    });
+
+    const matchX = k.positionX + 12;
+    const matchY = y - 34;
+    drawMatchstick(matchX, matchY, k.tapFlash > 0 ? "#f2c874" : "#d6aa55", "#f2994a", 1.15);
+
+    if (k.phase === "throwing" && !k.isFoul) {
+      const t = k.throwAnimT;
+      const fx0 = matchX;
+      const fy0 = matchY;
+      const landingX = Math.min(field.x + field.w - 12, k.throwLineX + k.throwDistance * 28);
+      const fx = fx0 + t * (landingX - fx0);
+      const fy = fy0 - Math.sin(t * Math.PI) * 26;
+      drawMatchstick(fx, fy, "#f6d68d", "#f2a66d", 0.95);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(`${k.throwDistance.toFixed(1)} m`, Math.min(field.x + field.w - 70, fx + 12), fy - 10);
+    }
+
+    const liveBest = getLiveKevytBestDistance();
+    if (liveBest > 0) {
+      const bestX = Math.min(field.x + field.w - 10, k.throwLineX + liveBest * 28);
+      ctx.strokeStyle = "#ffd27d";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(bestX, 222);
+      ctx.lineTo(bestX, 350);
+      ctx.stroke();
+      ctx.fillStyle = "#ffd27d";
+      ctx.font = "12px monospace";
+      ctx.fillText("PARAS", bestX - 18, 218);
+    }
+
+    ctx.fillStyle = "#cfe2ff";
+    ctx.font = "12px monospace";
+    const markers = [1, 2, 3];
+    markers.forEach((m) => {
+      const mx = Math.min(field.x + field.w - 10, k.throwLineX + m * 28);
+      ctx.fillRect(mx, 318, 2, 24);
+      ctx.fillText(`${m}m`, mx - 8, 356);
+    });
+  }
+
+  function drawMatchstick(x, y, bodyColor, tipColor, scale = 1) {
+    const w = 8 * scale;
+    const h = 2 * scale;
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(x - w / 2, y - h / 2, w, h);
+    ctx.fillStyle = tipColor;
+    ctx.fillRect(x + w / 2 - 2 * scale, y - h / 2 - 0.5 * scale, 2.5 * scale, 3 * scale);
+  }
+
+  function getLiveKevytBestDistance() {
+    const runs = gameState.kevytheitto.finishedRuns;
+    let best = 0;
+    runs.forEach((run) => {
+      if (!run.foul && run.distance > best) {
+        best = run.distance;
+      }
+    });
+    const k = gameState.kevytheitto;
+    if (k.phase === "throwing" && !k.isFoul) {
+      best = Math.max(best, k.throwDistance);
+    }
+    return best;
+  }
+
+  function getKevytLiveLeaderboard() {
+    const k = gameState.kevytheitto;
+    const byId = new Map();
+    gameState.tournament.contestants.forEach((c) => {
+      byId.set(c.id, {
+        id: c.id,
+        name: c.name,
+        best: 0,
+        hasResult: false,
+        foulOnly: true,
+      });
+    });
+
+    k.finishedRuns.forEach((run) => {
+      const row = byId.get(run.id);
+      if (!row) {
+        return;
+      }
+      row.hasResult = true;
+      if (!run.foul) {
+        row.foulOnly = false;
+        row.best = Math.max(row.best, run.distance);
+      }
+    });
+
+    return [...byId.values()].sort((a, b) => b.best - a.best);
+  }
+
+  function drawKevytLeaderboard() {
+    const rows = getKevytLiveLeaderboard().slice(0, 8);
+    const x = 625;
+    const y = 170;
+    const w = 235;
+    const h = 195;
+    drawPanel(x, y, w, h);
+    ctx.fillStyle = "#d7f1ff";
+    ctx.font = "bold 15px monospace";
+    ctx.fillText("LIVE", x + 10, y + 24);
+    ctx.fillText("PARAS", x + 150, y + 24);
+    ctx.font = "12px monospace";
+    rows.forEach((row, idx) => {
+      const yy = y + 46 + idx * 18;
+      const contestant = gameState.tournament.contestants.find((c) => c.id === row.id);
+      const isHuman = contestant?.controller === "human";
+      ctx.fillStyle = isHuman ? "#7dffb3" : "#d7f1ff";
+      ctx.fillText(`${idx + 1}. ${row.name}`, x + 10, yy);
+      const metric = row.best > 0 ? `${row.best.toFixed(1)}m` : row.hasResult ? "HYL." : "-";
+      ctx.fillText(metric, x + 150, yy);
     });
   }
 
@@ -2386,6 +3141,7 @@
     }
     onSoutuTap();
     onKivenheittoTap();
+    onKevytheittoTap();
     onPolkyTap();
   }
 
