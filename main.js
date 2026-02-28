@@ -280,6 +280,13 @@
     clearCanvas();
     gameState.ui.buttons = [];
 
+    addFullscreenButton();
+    if (isPortraitMobile()) {
+      drawRotateOverlay();
+      drawButtons();
+      return;
+    }
+
     switch (gameState.screen) {
       case SCREEN.TITLE:
         drawTitle();
@@ -316,6 +323,69 @@
   function clearCanvas() {
     ctx.fillStyle = "#140f29";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function isPortraitMobile() {
+    return window.innerHeight > window.innerWidth;
+  }
+
+  function drawRotateOverlay() {
+    ctx.fillStyle = "#d7f1ff";
+    ctx.textAlign = "center";
+    ctx.font = "bold 46px monospace";
+    ctx.fillText("KAANNA PUHELIN", canvas.width / 2, 210);
+    ctx.font = "22px monospace";
+    ctx.fillStyle = "#a3d5ff";
+    ctx.fillText("Peli toimii parhaiten vaakatilassa.", canvas.width / 2, 252);
+    ctx.fillStyle = "#ffd27d";
+    ctx.fillText("Napauta nayttoa lukitaksesi landscape (jos tuettu).", canvas.width / 2, 295);
+  }
+
+  function tryLockLandscape() {
+    if (typeof screen === "undefined" || !screen.orientation || !screen.orientation.lock) {
+      return;
+    }
+    screen.orientation.lock("landscape").catch(() => {
+      // iOS Safari and some browsers do not allow lock.
+    });
+  }
+
+  function isFullscreenActive() {
+    return !!(
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.msFullscreenElement
+    );
+  }
+
+  function toggleFullscreen() {
+    const root = document.documentElement;
+    if (!isFullscreenActive()) {
+      const request =
+        root.requestFullscreen ||
+        root.webkitRequestFullscreen ||
+        root.msRequestFullscreen;
+      if (request) {
+        request.call(root);
+      }
+      tryLockLandscape();
+      return;
+    }
+
+    const exit =
+      document.exitFullscreen ||
+      document.webkitExitFullscreen ||
+      document.msExitFullscreen;
+    if (exit) {
+      exit.call(document);
+    }
+  }
+
+  function addFullscreenButton() {
+    const label = isFullscreenActive() ? "POISTU FS" : "FULLSCREEN";
+    addButton(canvas.width - 176, 16, 160, 44, label, () => {
+      toggleFullscreen();
+    });
   }
 
   function drawPanel(x, y, w, h) {
@@ -1930,6 +2000,7 @@
   }
 
   function handlePointerDown(event) {
+    tryLockLandscape();
     ensureAudioContext();
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;

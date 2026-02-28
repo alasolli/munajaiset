@@ -16,26 +16,37 @@ body {
   padding: 0;
   width: 100%;
   height: 100%;
+  min-height: 100dvh;
   background: radial-gradient(circle at top, #2c1f53 0%, var(--bg) 70%);
   color: var(--text);
   font-family: "Courier New", Courier, monospace;
   touch-action: manipulation;
+  overflow: hidden;
 }
 
 .app-shell {
   width: 100%;
-  height: 100%;
+  height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 12px;
+  padding: 0;
 }
 
 #game-canvas {
-  width: min(100vw - 24px, 960px);
-  height: auto;
-  aspect-ratio: 16 / 9;
+  width: min(100vw, calc(100dvh * 16 / 9));
+  height: min(100dvh, calc(100vw * 9 / 16));
+  max-width: 960px;
+  max-height: 540px;
   border: 6px solid var(--panel-border);
   background: #140f29;
   image-rendering: pixelated;
   box-shadow: 0 0 0 6px #140f29, 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+@media (orientation: portrait) and (max-width: 900px) {
+  #game-canvas {
+    width: 100vw;
+    height: min(100dvh, calc(100vw * 9 / 16));
+    border-width: 4px;
+  }
 }
