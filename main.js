@@ -278,11 +278,32 @@
   const assets = {
     titleBgImage: new Image(),
     titleBgLoaded: false,
+    contestantHeads: {},
   };
   assets.titleBgImage.onload = () => {
     assets.titleBgLoaded = true;
   };
   assets.titleBgImage.src = "./munat.jpg";
+
+  (function loadContestantHeads() {
+    const heads = {
+      lirkki: "./lirkki.jpg",
+      pokki: "./pokki.jpg",
+      pressa: "./pressa.jpg",
+      "porge-arthuros": "./porge.jpg",
+      andil: "./andil.jpg",
+      rippeli: "./rippeli.jpg",
+      harpo: "./harpo.jpg",
+      tantor: "./tantor.jpg",
+    };
+    Object.keys(heads).forEach((id) => {
+      const img = new Image();
+      img.onload = () => {
+        assets.contestantHeads[id] = img;
+      };
+      img.src = heads[id];
+    });
+  })();
 
   function createTournamentContestant(baseContestant, controller) {
     return {
@@ -4236,71 +4257,117 @@
       ctx.fillRect(x + dx * scale, y + dy * scale, w * scale, h * scale);
     };
 
+    const drawPhotoHead = (img, headX, headY, headSz) => {
+      const iw = img.naturalWidth;
+      const ih = img.naturalHeight;
+      const scaleFit = Math.min(headSz / iw, headSz / ih);
+      const drawW = iw * scaleFit;
+      const drawH = ih * scaleFit;
+      const drawX = headX + (headSz - drawW) / 2;
+      const drawY = headY + (headSz - drawH) / 2;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(headX + headSz / 2, headY + headSz / 2, headSz / 2, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(img, 0, 0, iw, ih, drawX, drawY, drawW, drawH);
+      ctx.restore();
+    };
+
     if (isPorge) {
-      // Selvasti laihempi, pitka siluetti.
-      px(2, 2, 4, 2, p.hair);
-      px(2, 4, 4, 4, p.skin);
-      px(3, 5, 1, 1, p.eyes);
-      px(4, 5, 1, 1, p.eyes);
+      // Porge: laiha, pitkä. Vartalo ensin, sitten valokuvapää jos kuva ladattu.
       px(2, 8, 4, 6, characterShirtColor);
       px(2, 14, 4, 3, shortsColor);
       px(1, 9, 1, 4, p.skin);
       px(6, 9, 1, 4, p.skin);
       px(2, 17, 1, 3, p.skin);
       px(5, 17, 1, 3, p.skin);
+      const headImg = assets.contestantHeads["porge-arthuros"];
+      const headSz = 12 * scale;
+      const headX = x - 2 * scale;
+      const headY = y - 3 * scale;
+      if (headImg && headImg.complete && headImg.naturalWidth > 0) {
+        drawPhotoHead(headImg, headX, headY, headSz);
+      } else {
+        px(2, 2, 4, 2, p.hair);
+        px(2, 4, 4, 4, p.skin);
+        px(3, 5, 1, 1, p.eyes);
+        px(4, 5, 1, 1, p.eyes);
+      }
       return;
     }
 
     if (isLirkki) {
-      // Lirkki: lyhyt, kapea.
-      px(2, 3, 4, 2, p.hair);
-      px(2, 5, 4, 3, p.skin);
-      px(3, 6, 1, 1, p.eyes);
-      px(4, 6, 1, 1, p.eyes);
+      // Lirkki: lyhyt, kapea. Vartalo ensin, sitten valokuvapää ettei jää piiloon.
       px(2, 8, 4, 4, characterShirtColor);
       px(2, 12, 4, 2, shortsColor);
       px(1, 9, 1, 3, p.skin);
       px(6, 9, 1, 3, p.skin);
       px(2, 14, 1, 2, p.skin);
       px(5, 14, 1, 2, p.skin);
+      const headImg = assets.contestantHeads.lirkki;
+      const headSz = 12 * scale;
+      const headX = x - 1.5 * scale;
+      const headY = y - 3 * scale;
+      if (headImg && headImg.complete && headImg.naturalWidth > 0) {
+        drawPhotoHead(headImg, headX, headY, headSz);
+      } else {
+        px(2, 3, 4, 2, p.hair);
+        px(2, 5, 4, 3, p.skin);
+        px(3, 6, 1, 1, p.eyes);
+        px(4, 6, 1, 1, p.eyes);
+      }
       return;
     }
 
     if (isAndil) {
-      // Andil: pitkä, paksu. Suikka-hattu.
-      px(2, 2, 4, 2, p.hair);
-      px(0, 4, 10, 4, p.skin);
-      px(3, 5, 1, 1, p.eyes);
-      px(6, 5, 1, 1, p.eyes);
+      // Andil: pitkä, paksu. Vartalo ensin, sitten valokuvapää tai suikka-hattu + naama.
       px(0, 8, 10, 6, characterShirtColor);
       px(0, 14, 10, 4, characterShortsColor);
       px(-1, 9, 1, 5, p.skin);
       px(10, 9, 1, 5, p.skin);
       px(2, 18, 2, 4, p.skin);
       px(7, 18, 2, 4, p.skin);
+      const headImg = assets.contestantHeads.andil;
+      const headSz = 12 * scale;
+      const headX = x - 2 * scale;
+      const headY = y - 3 * scale;
+      if (headImg && headImg.complete && headImg.naturalWidth > 0) {
+        drawPhotoHead(headImg, headX, headY, headSz);
+      } else {
+        px(2, 2, 4, 2, p.hair);
+        px(0, 4, 10, 4, p.skin);
+        px(3, 5, 1, 1, p.eyes);
+        px(6, 5, 1, 1, p.eyes);
+      }
       return;
     }
 
     if (isTantor) {
-      // Tantor: pitkä, paksu.
-      px(0, 2, 10, 2, p.hair);
-      px(0, 4, 10, 4, p.skin);
-      px(3, 5, 1, 1, p.eyes);
-      px(6, 5, 1, 1, p.eyes);
+      // Tantor: pitkä, paksu. Vartalo ensin, sitten valokuvapää jos kuva ladattu.
       px(0, 8, 10, 6, characterShirtColor);
       px(0, 14, 10, 4, characterShortsColor);
       px(-1, 9, 1, 5, p.skin);
       px(10, 9, 1, 5, p.skin);
       px(2, 18, 2, 4, p.skin);
       px(7, 18, 2, 4, p.skin);
+      const headImg = assets.contestantHeads.tantor;
+      const headSz = 12 * scale;
+      const headX = x - 2 * scale;
+      const headY = y - 3 * scale;
+      if (headImg && headImg.complete && headImg.naturalWidth > 0) {
+        drawPhotoHead(headImg, headX, headY, headSz);
+      } else {
+        px(0, 2, 10, 2, p.hair);
+        px(0, 4, 10, 4, p.skin);
+        px(3, 5, 1, 1, p.eyes);
+        px(6, 5, 1, 1, p.eyes);
+      }
       return;
     }
 
     if (isPokki) {
-      // Pokki: lyhyt, keskikoko, kalju.
-      px(1, 2, 6, 6, p.skin);
-      px(2, 5, 1, 1, p.eyes);
-      px(5, 5, 1, 1, p.eyes);
+      // Pokki: lyhyt, keskikoko, kalju. Vartalo ensin, sitten valokuvapää jos kuva ladattu.
       px(0, 8, 8, 4, characterShirtColor);
       px(0, 12, 8, 2, characterShortsColor);
       px(-1, 9, 1, 3, p.skin);
@@ -4310,54 +4377,104 @@
       px(0, 8, 2, 4, "#b57dff");
       px(6, 8, 2, 4, "#b57dff");
       px(2, 8, 4, 2, "#b57dff");
+      const headImg = assets.contestantHeads.pokki;
+      const headSz = 12 * scale;
+      const headX = x - 2 * scale;
+      const headY = y - 3 * scale;
+      if (headImg && headImg.complete && headImg.naturalWidth > 0) {
+        drawPhotoHead(headImg, headX, headY, headSz);
+      } else {
+        px(1, 2, 6, 6, p.skin);
+        px(2, 5, 1, 1, p.eyes);
+        px(5, 5, 1, 1, p.eyes);
+      }
+      return;
+    }
+
+    if (isPressa) {
+      // Pressa: valokuvapää jos kuva ladattu, muuten pikselipää + viikset/parta.
+      px(0, 8, 8, 5, characterShirtColor);
+      px(0, 13, 8, 3, characterShortsColor);
+      px(-1, 9, 1, 3, p.skin);
+      px(8, 9, 1, 3, p.skin);
+      px(1, 16, 2, 3, p.skin);
+      px(5, 16, 2, 3, p.skin);
+      const headImg = assets.contestantHeads.pressa;
+      const headSz = 12 * scale;
+      const headX = x - 2 * scale;
+      const headY = y - 3 * scale;
+      if (headImg && headImg.complete && headImg.naturalWidth > 0) {
+        drawPhotoHead(headImg, headX, headY, headSz);
+      } else {
+        px(0, 2, 8, 2, p.hair);
+        px(1, 4, 6, 4, p.skin);
+        px(2, 5, 1, 1, p.eyes);
+        px(5, 5, 1, 1, p.eyes);
+        px(2, 7, 1, 1, "#e5791c");
+        px(3, 7, 2, 1, "#e5791c");
+        px(5, 7, 1, 1, "#e5791c");
+        px(3, 8, 2, 1, "#c76012");
+        px(3, 9, 2, 1, "#c76012");
+      }
       return;
     }
 
     if (isRippeli) {
-      px(0, 2, 8, 2, p.hair);
-    }
-    // Keskikoko: Pressa, Rippeli, Harpo.
-    px(0, 2, 8, 2, p.hair);
-    if (isRippeli) {
-      px(0, 3, 8, 1, "#1a1a1a");
-    }
-    px(1, 4, 6, 4, p.skin);
-    px(2, 5, 1, 1, p.eyes);
-    px(5, 5, 1, 1, p.eyes);
-    px(0, 8, 8, 5, characterShirtColor);
-    px(0, 13, 8, 3, characterShortsColor);
-    px(-1, 9, 1, 3, p.skin);
-    px(8, 9, 1, 3, p.skin);
-    px(1, 16, 2, 3, p.skin);
-    px(5, 16, 2, 3, p.skin);
-
-    if (isPressa) {
-      // Pressalle oranssit viikset + lyhyt parta.
-      px(2, 7, 1, 1, "#e5791c");
-      px(3, 7, 2, 1, "#e5791c");
-      px(5, 7, 1, 1, "#e5791c");
-      px(3, 8, 2, 1, "#c76012");
-      px(3, 9, 2, 1, "#c76012");
+      // Rippeli: valokuvapää jos kuva ladattu, muuten pikselipää + panta + parta.
+      px(0, 8, 8, 5, characterShirtColor);
+      px(0, 13, 8, 3, characterShortsColor);
+      px(-1, 9, 1, 3, p.skin);
+      px(8, 9, 1, 3, p.skin);
+      px(1, 16, 2, 3, p.skin);
+      px(5, 16, 2, 3, p.skin);
+      const headImg = assets.contestantHeads.rippeli;
+      const headSz = 12 * scale;
+      const headX = x - 2 * scale;
+      const headY = y - 3 * scale;
+      if (headImg && headImg.complete && headImg.naturalWidth > 0) {
+        drawPhotoHead(headImg, headX, headY, headSz);
+      } else {
+        px(0, 2, 8, 2, p.hair);
+        px(0, 3, 8, 1, "#1a1a1a");
+        px(1, 4, 6, 4, p.skin);
+        px(2, 5, 1, 1, p.eyes);
+        px(5, 5, 1, 1, p.eyes);
+        const beardColor = "#b8956a";
+        const beardDark = "#9a7a52";
+        px(2, 7, 1, 1, beardColor);
+        px(3, 7, 2, 1, beardColor);
+        px(5, 7, 1, 1, beardColor);
+        px(3, 8, 2, 1, beardDark);
+        px(3, 9, 2, 1, beardDark);
+      }
+      return;
     }
 
     if (isHarpo) {
-      // Harpolle mustat viikset + lyhyt parta.
-      px(2, 7, 1, 1, "#1b1b1b");
-      px(3, 7, 2, 1, "#1b1b1b");
-      px(5, 7, 1, 1, "#1b1b1b");
-      px(3, 8, 2, 1, "#0f0f0f");
-      px(3, 9, 2, 1, "#0f0f0f");
-    }
-
-    if (isRippeli) {
-      // Rippelille vaaleanruskeat viikset + parta.
-      const beardColor = "#b8956a";
-      const beardDark = "#9a7a52";
-      px(2, 7, 1, 1, beardColor);
-      px(3, 7, 2, 1, beardColor);
-      px(5, 7, 1, 1, beardColor);
-      px(3, 8, 2, 1, beardDark);
-      px(3, 9, 2, 1, beardDark);
+      // Harpo: valokuvapää jos kuva ladattu, muuten pikselipää + viikset/parta.
+      px(0, 8, 8, 5, characterShirtColor);
+      px(0, 13, 8, 3, characterShortsColor);
+      px(-1, 9, 1, 3, p.skin);
+      px(8, 9, 1, 3, p.skin);
+      px(1, 16, 2, 3, p.skin);
+      px(5, 16, 2, 3, p.skin);
+      const headImg = assets.contestantHeads.harpo;
+      const headSz = 12 * scale;
+      const headX = x - 2 * scale;
+      const headY = y - 3 * scale;
+      if (headImg && headImg.complete && headImg.naturalWidth > 0) {
+        drawPhotoHead(headImg, headX, headY, headSz);
+      } else {
+        px(0, 2, 8, 2, p.hair);
+        px(1, 4, 6, 4, p.skin);
+        px(2, 5, 1, 1, p.eyes);
+        px(5, 5, 1, 1, p.eyes);
+        px(2, 7, 1, 1, "#1b1b1b");
+        px(3, 7, 2, 1, "#1b1b1b");
+        px(5, 7, 1, 1, "#1b1b1b");
+        px(3, 8, 2, 1, "#0f0f0f");
+        px(3, 9, 2, 1, "#0f0f0f");
+      }
     }
   }
 
