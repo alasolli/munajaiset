@@ -65,7 +65,7 @@
     },
     {
       id: "harpo",
-      name: "Harpo",
+      name: "Harpyija",
       stats: { speed: 5, strength: 7, accuracy: 6, stamina: 5 },
       colors: { skin: "#cfa67c", hair: "#8e8e8e", accent: "#84c4ff", eyes: "#ffffff", shorts: "#ffffff" },
     },
