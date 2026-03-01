@@ -6,13 +6,19 @@
     <meta name="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <title>Munajaiset</title>
     <!-- Bump v= aina kun deployaat (commit/push), niin selain hakee uudet tiedostot -->
-    <link rel="icon" href="./favicon.svg?v=6" type="image/svg+xml" />
-    <link rel="stylesheet" href="./style.css?v=6" />
+    <link rel="icon" href="./favicon.svg?v=7" type="image/svg+xml" />
+    <link rel="stylesheet" href="./style.css?v=7" />
   </head>
   <body>
+    <div id="password-gate" style="position:fixed;inset:0;background:#140f29;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:100;gap:1rem;">
+      <p style="color:#d7f1ff;font-family:monospace;font-size:1.2rem;">Anna salasana:</p>
+      <input type="password" id="password-input" autocomplete="off" style="font-size:1.2rem;padding:0.5rem;font-family:monospace;max-width:12rem;" />
+      <button type="button" id="password-submit" style="font-size:1rem;padding:0.5rem 1rem;font-family:monospace;cursor:pointer;">OK</button>
+      <p id="password-error" style="color:#ff8f8f;font-family:monospace;font-size:0.9rem;display:none;">Väärä salasana</p>
+    </div>
     <main class="app-shell">
       <canvas id="game-canvas" width="960" height="540" aria-label="Munajaiset pelikanvas"></canvas>
     </main>
-    <script src="./main.js?v=6"></script>
+    <script src="./main.js?v=7"></script>
   </body>
 </html>

@@ -4541,3 +4541,27 @@
 
   requestAnimationFrame(loop);
 })();
+
+(function passwordGate() {
+  const PASS = "sabas";
+  const gate = document.getElementById("password-gate");
+  const input = document.getElementById("password-input");
+  const submit = document.getElementById("password-submit");
+  const err = document.getElementById("password-error");
+  if (!gate || !input || !submit) return;
+  function check() {
+    if (input.value.trim() === PASS) {
+      gate.style.display = "none";
+      err.style.display = "none";
+    } else {
+      err.style.display = "block";
+      input.value = "";
+      input.focus();
+    }
+  }
+  submit.addEventListener("click", check);
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") check();
+  });
+  input.focus();
+})();
